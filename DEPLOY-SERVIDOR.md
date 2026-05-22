@@ -29,9 +29,8 @@ ssh tu_usuario@IP_DE_TU_SERVIDOR
 ```
 
 ```bash
-sudo mkdir -p /var/www/matumailer
-cd /var/www/matumailer
-git clone https://github.com/devJuanes/MatuMailer.git .
+cd ~/apps/MatuMailer
+# (o: git clone https://github.com/devJuanes/MatuMailer.git ~/apps/MatuMailer)
 npm install
 ```
 
@@ -94,14 +93,14 @@ pm2 -v
 Abre el archivo de configuración:
 
 ```bash
-cd /var/www/matumailer
+cd ~/apps/MatuMailer
 nano ecosystem.config.cjs
 ```
 
 Si clonaste en otra carpeta, cambia la línea:
 
 ```javascript
-const APP_DIR = '/var/www/matumailer';
+const APP_DIR = '/root/apps/MatuMailer';
 ```
 
 Guarda: `Ctrl+O`, Enter, `Ctrl+X`.
@@ -109,7 +108,7 @@ Guarda: `Ctrl+O`, Enter, `Ctrl+X`.
 ### 3.4 Arrancar las dos apps
 
 ```bash
-cd /var/www/matumailer
+cd ~/apps/MatuMailer
 pm2 start ecosystem.config.cjs
 ```
 
@@ -174,8 +173,8 @@ pm2 save
 ### 4.1 Copiar configuraciones
 
 ```bash
-sudo cp /var/www/matumailer/deploy/nginx-api.matucatalogo.com.conf /etc/nginx/sites-available/api.matucatalogo.com
-sudo cp /var/www/matumailer/deploy/nginx-mail.matucatalogo.com.conf /etc/nginx/sites-available/mail.matucatalogo.com
+sudo cp ~/apps/MatuMailer/deploy/nginx-api.matucatalogo.com.conf /etc/nginx/sites-available/api.matucatalogo.com
+sudo cp ~/apps/MatuMailer/deploy/nginx-mail.matucatalogo.com.conf /etc/nginx/sites-available/mail.matucatalogo.com
 ```
 
 ### 4.2 Activar sitios
@@ -228,7 +227,7 @@ Regístrate, configura SMTP, genera token.
 ## Actualizar después de cambios en GitHub
 
 ```bash
-cd /var/www/matumailer
+cd ~/apps/MatuMailer
 git pull
 npm install
 npm run build

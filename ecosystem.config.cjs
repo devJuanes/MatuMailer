@@ -4,7 +4,8 @@
  * 2. pm2 start ecosystem.config.cjs
  * 3. pm2 save
  */
-const APP_DIR = '/var/www/matumailer';
+// Ruta en tu VPS (ajusta si clonaste en otro sitio)
+const APP_DIR = '/root/apps/MatuMailer';
 
 module.exports = {
   apps: [
