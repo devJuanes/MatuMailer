@@ -79,7 +79,7 @@ Mantiene la API y el dashboard **encendidos** aunque cierres SSH o reinicies el 
 ### 3.2 Instalar PM2 (una sola vez)
 
 ```bash
-sudo npm install -g pm2
+    sudo npm install -g pm2
 ```
 
 Comprueba:
