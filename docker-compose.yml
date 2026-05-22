@@ -1,0 +1,64 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: matumailer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: matumailer
+      POSTGRES_PASSWORD: matumailer_secret
+      POSTGRES_DB: matumailer
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./packages/database/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+
+  matudb:
+    image: postgres:16-alpine
+    container_name: matumailer-matudb
+    profiles:
+      - matudb
+    ports:
+      - '3001:3001'
+    environment:
+      MATUDB_URL: http://localhost:3001
+    # Point MatuDB server to your MatuDB installation when available
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: matumailer-api
+    restart: unless-stopped
+    ports:
+      - '4000:4000'
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://matumailer:matumailer_secret@postgres:5432/matumailer
+      MATUDB_URL: ${MATUDB_URL:-http://host.docker.internal:3001}
+      MATUDB_PROJECT_ID: ${MATUDB_PROJECT_ID:-matumailer}
+      MATUDB_API_KEY: ${MATUDB_API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CORS_ORIGIN: http://localhost:3000
+    depends_on:
+      - postgres
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: matumailer-dashboard
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

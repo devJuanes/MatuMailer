@@ -1,0 +1,29 @@
+{
+  "name": "matumailer-cli",
+  "version": "1.0.0",
+  "description": "MatuMailer CLI — init projects, verify SMTP, generate config",
+  "bin": {
+    "matumailer": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "type": "module",
+  "files": ["dist", "templates"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --clean",
+    "dev": "tsup src/index.ts --format esm --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^12.1.0",
+    "matumailer": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

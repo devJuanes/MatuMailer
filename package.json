@@ -1,0 +1,40 @@
+{
+  "name": "matumailer-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MatuMailer — Modern email infrastructure platform for developers",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run build --filter=@matumailer/shared --filter=@matumailer/database --filter=matumailer && turbo run dev --filter=@matumailer/api --filter=@matumailer/dashboard",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
+    "typecheck": "turbo run typecheck",
+    "db:migrate-info": "turbo run db:seed --filter=@matumailer/database",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "typescript-eslint": "^8.18.0",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "npm@10.9.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,json,md}": [
+      "prettier --write"
+    ]
+  }
+}

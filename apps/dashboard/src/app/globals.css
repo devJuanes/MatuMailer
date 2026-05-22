@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 43 33% 97%;
+    --foreground: 0 0% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+    --primary: 46 100% 64%;
+    --primary-foreground: 0 0% 8%;
+    --secondary: 40 20% 94%;
+    --secondary-foreground: 0 0% 20%;
+    --muted: 40 15% 92%;
+    --muted-foreground: 0 0% 42%;
+    --accent: 46 100% 64%;
+    --accent-foreground: 0 0% 8%;
+    --charcoal: 0 0% 8%;
+    --gold: 46 100% 64%;
+    --cream: 43 33% 97%;
+    --border: 40 20% 88%;
+    --input: 40 20% 90%;
+    --ring: 46 90% 55%;
+    --radius: 1.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-cream text-foreground antialiased;
+    background-image: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(46 100% 64% / 0.12), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 0%, hsl(40 60% 90% / 0.5), transparent);
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply rounded-3xl border border-white/60 bg-white/70 shadow-soft backdrop-blur-md;
+  }
+
+  .glass-card-dark {
+    @apply rounded-3xl bg-charcoal text-white shadow-soft-lg;
+  }
+
+  .pill-nav {
+    @apply rounded-full px-5 py-2 text-sm font-medium transition-all duration-200;
+  }
+
+  .pill-nav-active {
+    @apply bg-charcoal text-white shadow-sm;
+  }
+
+  .pill-nav-inactive {
+    @apply text-muted-foreground hover:bg-white/80 hover:text-foreground;
+  }
+
+  .stat-pill {
+    @apply inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium;
+  }
+
+  .input-crextio {
+    @apply h-12 rounded-2xl border border-border/80 bg-white/80 px-4 text-sm shadow-sm backdrop-blur-sm transition-all placeholder:text-muted-foreground focus:border-gold/50 focus:outline-none focus:ring-2 focus:ring-gold/30;
+  }
+}

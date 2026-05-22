@@ -1,0 +1,18 @@
+export const es = {
+  appName: 'MatuMailer',
+  tagline: 'Infraestructura de correo para desarrolladores',
+  signIn: 'Iniciar sesión',
+  signUp: 'Crear cuenta',
+  getStarted: 'Comenzar gratis',
+  email: 'Correo electrónico',
+  password: 'Contraseña',
+  name: 'Nombre',
+  loading: 'Cargando...',
+  save: 'Guardar',
+  cancel: 'Cancelar',
+  delete: 'Eliminar',
+  test: 'Probar',
+  preview: 'Vista previa',
+  project: 'Proyecto',
+  noProjects: 'Sin proyectos',
+} as const;
