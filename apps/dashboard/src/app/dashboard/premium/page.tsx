@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { Crown, Check } from 'lucide-react';
 import { useState } from 'react';
 import { PageHeader } from '@/components/layout/page-header';

@@ -13,7 +13,7 @@ import { TemplateUsageDocs } from '@/components/template-builder/template-usage-
 import { useProjects } from '@/hooks/use-project';
 import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
-import { canCreateTemplate, templateLimitState, limitMessage } from '@/lib/plan-limits-ui';
+import { templateLimitState, limitMessage } from '@/lib/plan-limits-ui';
 import { cn } from '@/lib/utils';
 import { Palette, Pencil } from 'lucide-react';
 

@@ -11,7 +11,7 @@ import { UpgradeButton } from '@/components/billing/UpgradeButton';
 import { useProjects } from '@/hooks/use-project';
 import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
-import { canConfigureSmtp, smtpLimitState, limitMessage, FREE_LIMITS } from '@/lib/plan-limits-ui';
+import { smtpLimitState, limitMessage } from '@/lib/plan-limits-ui';
 import { Server, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

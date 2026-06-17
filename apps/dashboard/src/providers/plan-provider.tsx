@@ -23,8 +23,9 @@ function readCachedPlan(): PlanStatus | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedPlan;
     if (Date.now() - parsed.cachedAt > CACHE_TTL_MS) return null;
-    const { cachedAt: _, ...plan } = parsed;
-    return plan;
+    const plan = { ...parsed };
+    delete (plan as Partial<CachedPlan>).cachedAt;
+    return plan as PlanStatus;
   } catch {
     return null;
   }
