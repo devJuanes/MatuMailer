@@ -10,3 +10,6 @@ dist
 coverage
 .idea
 .vscode
+*.tsbuildinfo
+db-usuarios-export.json
+email.html
