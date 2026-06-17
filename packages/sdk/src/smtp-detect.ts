@@ -1,4 +1,5 @@
-import { detectSmtpProvider, type SmtpPreset } from '@matumailer/shared';
+import { detectSmtpProvider } from '@matumailer/shared';
+import type { SmtpPreset } from './types.js';
 
 export function detectSmtp(email: string): SmtpPreset | null {
   return detectSmtpProvider(email);

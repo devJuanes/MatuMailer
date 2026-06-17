@@ -4,9 +4,13 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/page-header';
+import { PlanLimitBanner } from '@/components/billing/PlanLimitBanner';
+import { UpgradeButton } from '@/components/billing/UpgradeButton';
 import { TemplateBuilder } from '@/components/template-builder/template-builder';
 import { useProjects } from '@/hooks/use-project';
+import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
+import { canCreateTemplate, FREE_LIMITS } from '@/lib/plan-limits-ui';
 import type { EmailBlock } from '@/lib/email-builder';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
@@ -23,11 +27,15 @@ interface TemplateRow {
 
 function CreadorInner() {
   const { activeId, active } = useProjects();
+  const { plan, isPremium, refresh: refreshPlan } = usePlan();
   const searchParams = useSearchParams();
   const editId = searchParams.get('id');
   const [loading, setLoading] = useState(!!editId);
   const [initial, setInitial] = useState<TemplateRow | null>(null);
   const [isNew, setIsNew] = useState(!editId);
+
+  const allowCreate = canCreateTemplate(plan, isPremium, plan?.usage.customTemplates);
+  const blockedNew = isNew && !allowCreate;
 
   useEffect(() => {
     if (!activeId || !editId) {
@@ -58,6 +66,23 @@ function CreadorInner() {
   }
 
   if (loading) return <p className="text-muted-foreground">Cargando plantilla…</p>;
+
+  if (blockedNew) {
+    return (
+      <div className="space-y-4">
+        <PlanLimitBanner
+          label="Plantillas personalizadas"
+          used={plan?.usage.customTemplates ?? 0}
+          max={plan?.limits?.maxCustomTemplates ?? FREE_LIMITS.maxCustomTemplates}
+          blocked
+          description="No puedes crear más plantillas en el plan gratis."
+        />
+        <div className="text-center">
+          <UpgradeButton label="Crear más plantillas con Premium" />
+        </div>
+      </div>
+    );
+  }
 
   const key = isNew ? 'new' : (initial?.id ?? 'new');
 
@@ -107,6 +132,7 @@ function CreadorInner() {
           });
           setInitial(res.template);
           setIsNew(false);
+          await refreshPlan();
           window.history.replaceState(null, '', `/dashboard/creador?id=${res.template.id}`);
         }
       }}
@@ -135,19 +161,25 @@ function extractVars(text: string): string[] {
 }
 
 export default function CreadorPage() {
+  const { plan, isPremium } = usePlan();
+  const allowCreate = canCreateTemplate(plan, isPremium);
+
   return (
     <div>
       <PageHeader
         title="Creador de plantillas"
         description="Arrastra bloques, personaliza estilos o edita HTML directo. Se guarda en tu proyecto y base de datos."
-
       >
-        <Link href="/dashboard/creador">
-          <Button variant="secondary">
-            <Plus className="mr-2 h-4 w-4" />
-            Nueva plantilla
-          </Button>
-        </Link>
+        {allowCreate ? (
+          <Link href="/dashboard/creador">
+            <Button variant="secondary">
+              <Plus className="mr-2 h-4 w-4" />
+              Nueva plantilla
+            </Button>
+          </Link>
+        ) : (
+          <UpgradeButton label="Más plantillas con Premium" />
+        )}
       </PageHeader>
       <Suspense fallback={<p className="text-muted-foreground">Cargando…</p>}>
         <CreadorInner />

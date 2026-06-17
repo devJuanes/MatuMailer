@@ -2,6 +2,19 @@
   "name": "@matumailer/shared",
   "version": "1.0.0",
   "private": true,
+  "description": "Shared types and schemas for MatuMailer (monorepo only; el SDK publica todo empaquetado)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devJuanes/MatuMailer.git",
+    "directory": "packages/shared"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -12,6 +25,7 @@
     }
   },
   "scripts": {
+    "prepublishOnly": "npm run build",
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
     "typecheck": "tsc --noEmit",

@@ -3,6 +3,9 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import {
   analyzeEmailSchema,
   buildDeliverabilityReport,
+  bulkSendEmailSchema,
+  bulkSendFromJsonSchema,
+  parseRecipientsFromJson,
   scheduleEmailSchema,
   sendEmailSchema,
   sendTestEmailSchema,
@@ -17,8 +20,10 @@ import {
 } from '@matumailer/database';
 import { z } from 'zod';
 import { renderTemplate } from '../lib/template-engine.js';
-import { sendEmail } from '../services/email.service.js';
+import { sendBulkEmail, sendEmail } from '../services/email.service.js';
 import { enqueueScheduledEmail } from '../services/schedule.service.js';
+import { assertCanSendForProject } from '../services/plan.service.js';
+import { replyPlanLimitError } from '../lib/plan-errors.js';
 
 export async function emailsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -33,11 +38,20 @@ export async function emailsRoutes(app: FastifyInstance) {
       try {
         const body = request.body;
         if (body.scheduledAt) {
-          const scheduled = await enqueueScheduledEmail(
-            request.projectId!,
-            body,
-            body.scheduledAt,
-          );
+          await assertCanSendForProject(request.projectId!, { schedule: true });
+        }
+        const recipients = Array.isArray(body.to) ? body.to : [body.to];
+        if (recipients.length > 1) {
+          await assertCanSendForProject(request.projectId!, {
+            bulk: true,
+            count: recipients.length,
+          });
+        } else {
+          await assertCanSendForProject(request.projectId!, { count: 1 });
+        }
+
+        if (body.scheduledAt) {
+          const scheduled = await enqueueScheduledEmail(request.projectId!, body, body.scheduledAt);
           return reply.status(201).send({
             success: true,
             scheduled: true,
@@ -52,6 +66,7 @@ export async function emailsRoutes(app: FastifyInstance) {
         });
         return { success: true, scheduled: false, ...result };
       } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
         const code = err instanceof Error ? err.message : 'SEND_FAILED';
         const status =
           code === 'SMTP_NOT_CONFIGURED' ||
@@ -138,11 +153,7 @@ export async function emailsRoutes(app: FastifyInstance) {
         if (!template) {
           return reply.status(404).send({ error: 'Not Found', message: 'Template not found' });
         }
-        const rendered = renderTemplate(
-          template.html_content,
-          template.subject,
-          body.data ?? {},
-        );
+        const rendered = renderTemplate(template.html_content, template.subject, body.data ?? {});
         html = rendered.html;
         subject = body.subject ?? rendered.subject;
       }
@@ -191,6 +202,7 @@ export async function emailsRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Not Found' });
       }
       try {
+        await assertCanSendForProject(project.id, { schedule: true });
         const scheduled = await enqueueScheduledEmail(
           project.id,
           request.body,
@@ -198,9 +210,9 @@ export async function emailsRoutes(app: FastifyInstance) {
         );
         return reply.status(201).send({ scheduled });
       } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
         const code = err instanceof Error ? err.message : 'SCHEDULE_FAILED';
-        const status =
-          code === 'INVALID_SCHEDULE_TIME' || code === 'SCHEDULE_TOO_SOON' ? 400 : 500;
+        const status = code === 'INVALID_SCHEDULE_TIME' || code === 'SCHEDULE_TOO_SOON' ? 400 : 500;
         return reply.status(status).send({
           error: code,
           message:
@@ -247,6 +259,161 @@ export async function emailsRoutes(app: FastifyInstance) {
   );
 
   server.post(
+    '/:projectId/bulk',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        params: z.object({ projectId: z.string().uuid() }),
+        body: bulkSendEmailSchema,
+        tags: ['Emails'],
+      },
+    },
+    async (request, reply) => {
+      const project = await projectsRepo.findProjectById(request.params.projectId);
+      if (!project || project.user_id !== request.userId) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+
+      try {
+        await assertCanSendForProject(project.id, {
+          bulk: true,
+          count: request.body.recipients.length,
+        });
+        const result = await sendBulkEmail({
+          projectId: project.id,
+          ...request.body,
+        });
+        return { success: true, ...result };
+      } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
+        const code = err instanceof Error ? err.message : 'BULK_SEND_FAILED';
+        const status =
+          code === 'SMTP_NOT_CONFIGURED' ||
+          code === 'SMTP_NOT_VERIFIED' ||
+          code === 'SMTP_FROM_DOMAIN_MISMATCH' ||
+          code === 'TEMPLATE_NOT_FOUND'
+            ? 400
+            : 500;
+        return reply.status(status).send({
+          error: code,
+          message: err instanceof Error ? err.message : 'No se pudo completar el envío masivo',
+        });
+      }
+    },
+  );
+
+  server.post(
+    '/send/bulk',
+    {
+      preHandler: [app.authenticateApiToken],
+      schema: { body: bulkSendEmailSchema, tags: ['Emails'] },
+    },
+    async (request, reply) => {
+      if (!request.projectId) {
+        return reply.status(401).send({
+          error: 'No autorizado',
+          message: 'Usa un token de API del proyecto (mm_live_...)',
+        });
+      }
+      try {
+        await assertCanSendForProject(request.projectId, {
+          bulk: true,
+          count: request.body.recipients.length,
+        });
+        const result = await sendBulkEmail({
+          projectId: request.projectId,
+          ...request.body,
+        });
+        return { success: true, ...result };
+      } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
+        const code = err instanceof Error ? err.message : 'BULK_SEND_FAILED';
+        const status =
+          code === 'SMTP_NOT_CONFIGURED' ||
+          code === 'SMTP_NOT_VERIFIED' ||
+          code === 'SMTP_FROM_DOMAIN_MISMATCH' ||
+          code === 'TEMPLATE_NOT_FOUND'
+            ? 400
+            : 500;
+        return reply.status(status).send({
+          error: code,
+          message: err instanceof Error ? err.message : 'No se pudo completar el envío masivo',
+        });
+      }
+    },
+  );
+
+  server.post(
+    '/send/bulk-from-json',
+    {
+      preHandler: [app.authenticateApiToken],
+      schema: { body: bulkSendFromJsonSchema, tags: ['Emails'] },
+    },
+    async (request, reply) => {
+      if (!request.projectId) {
+        return reply.status(401).send({
+          error: 'No autorizado',
+          message: 'Usa un token de API del proyecto (mm_live_...)',
+        });
+      }
+
+      try {
+        const { users, emailField, fieldMapping, excludeFields, ...sendOptions } = request.body;
+        const parsed = parseRecipientsFromJson(users, {
+          emailField,
+          fieldMapping,
+          excludeFields,
+        });
+
+        if (parsed.recipients.length === 0) {
+          return reply.status(400).send({
+            error: 'NO_RECIPIENTS',
+            message: 'No se encontraron destinatarios válidos en el JSON',
+          });
+        }
+
+        await assertCanSendForProject(request.projectId, {
+          bulk: true,
+          count: parsed.recipients.length,
+        });
+
+        const result = await sendBulkEmail({
+          projectId: request.projectId,
+          ...sendOptions,
+          recipients: parsed.recipients,
+        });
+
+        return {
+          success: true,
+          emailField: parsed.emailField,
+          skipped: parsed.skipped,
+          ...result,
+        };
+      } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
+        const code = err instanceof Error ? err.message : 'BULK_SEND_FAILED';
+        const status =
+          code === 'EMAIL_FIELD_NOT_FOUND' ||
+          code === 'SMTP_NOT_CONFIGURED' ||
+          code === 'SMTP_NOT_VERIFIED' ||
+          code === 'SMTP_FROM_DOMAIN_MISMATCH' ||
+          code === 'TEMPLATE_NOT_FOUND'
+            ? 400
+            : 500;
+        return reply.status(status).send({
+          error: code,
+          message:
+            code === 'EMAIL_FIELD_NOT_FOUND'
+              ? 'No se detectó un campo de correo en el JSON. Usa emailField para indicarlo.'
+              : err instanceof Error
+                ? err.message
+                : 'No se pudo completar el envío masivo',
+        });
+      }
+    },
+  );
+
+  server.post(
     '/:projectId/test',
     {
       preHandler: [app.authenticate],
@@ -264,6 +431,7 @@ export async function emailsRoutes(app: FastifyInstance) {
 
       const body = request.body;
       try {
+        await assertCanSendForProject(project.id, { isTest: true });
         const result = await sendEmail({
           projectId: project.id,
           to: body.to,
@@ -272,10 +440,12 @@ export async function emailsRoutes(app: FastifyInstance) {
           html: body.html,
           text: body.text,
           data: body.data,
+          logMetadata: { isTest: true },
         });
         await onboardingRepo.markTestEmailSent(project.id);
         return { success: true, ...result };
       } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
         const message = err instanceof Error ? err.message : 'Failed to send test email';
         const status =
           message === 'SMTP_NOT_CONFIGURED' ||

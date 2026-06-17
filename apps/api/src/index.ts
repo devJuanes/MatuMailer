@@ -12,12 +12,19 @@ import { projectsRoutes } from './routes/projects.routes.js';
 import { smtpRoutes } from './routes/smtp.routes.js';
 import { templatesRoutes } from './routes/templates.routes.js';
 import { emailsRoutes } from './routes/emails.routes.js';
+import { billingRoutes } from './routes/billing.routes.js';
 import { startScheduleWorker } from './services/schedule.service.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
-    authenticate: (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>;
-    authenticateApiToken: (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>;
+    authenticate: (
+      request: import('fastify').FastifyRequest,
+      reply: import('fastify').FastifyReply,
+    ) => Promise<void>;
+    authenticateApiToken: (
+      request: import('fastify').FastifyRequest,
+      reply: import('fastify').FastifyReply,
+    ) => Promise<void>;
   }
 }
 
@@ -66,6 +73,7 @@ async function buildServer() {
   await app.register(smtpRoutes, { prefix: '/api/smtp' });
   await app.register(templatesRoutes, { prefix: '/api/templates' });
   await app.register(emailsRoutes, { prefix: '/api/emails' });
+  await app.register(billingRoutes, { prefix: '/api/billing' });
 
   return app;
 }
@@ -88,7 +96,9 @@ async function main() {
   startScheduleWorker();
   console.log(`🚀 MatuMailer API en http://localhost:${PORT}`);
   console.log(`📚 Documentación: http://localhost:${PORT}/docs`);
-  console.log(`⏱️  Cola de envíos programados activa (cada ${process.env.SCHEDULER_INTERVAL_MS ?? 30000}ms)`);
+  console.log(
+    `⏱️  Cola de envíos programados activa (cada ${process.env.SCHEDULER_INTERVAL_MS ?? 30000}ms)`,
+  );
 }
 
 main().catch((err) => {

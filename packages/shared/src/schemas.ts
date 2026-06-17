@@ -56,7 +56,11 @@ const templateBlockSchema = z.object({
 });
 
 export const templateCreateSchema = z.object({
-  slug: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/),
+  slug: z
+    .string()
+    .min(1)
+    .max(50)
+    .regex(/^[a-z0-9-]+$/),
   name: z.string().min(1).max(100),
   subject: z.string().min(1).max(200),
   htmlContent: z.string().min(1),
@@ -113,3 +117,25 @@ export const sendTestEmailSchema = z
   .refine((d) => !!(d.template || (d.html && d.html.length > 0)), {
     message: 'Indica una plantilla o contenido HTML',
   });
+
+const bulkRecipientSchema = z.object({
+  email: z.string().email(),
+  data: z.record(z.unknown()).optional(),
+});
+
+export const bulkSendEmailSchema = z.object({
+  template: z.string().min(1),
+  subject: z.string().min(1).max(200).optional(),
+  recipients: z.array(bulkRecipientSchema).min(1).max(500),
+  delayMs: z.number().int().min(0).max(5000).optional(),
+});
+
+export const bulkSendFromJsonSchema = z.object({
+  template: z.string().min(1),
+  subject: z.string().min(1).max(200).optional(),
+  emailField: z.string().min(1).optional(),
+  fieldMapping: z.record(z.string()).optional(),
+  excludeFields: z.array(z.string()).optional(),
+  delayMs: z.number().int().min(0).max(5000).optional(),
+  users: z.union([z.array(z.record(z.unknown())), z.record(z.record(z.unknown()))]),
+});

@@ -12,19 +12,33 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "prepublishOnly": "npm run build",
+    "build": "tsup",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
   },
-  "keywords": ["email", "smtp", "matumailer", "transactional-email"],
+  "keywords": [
+    "email",
+    "smtp",
+    "matumailer",
+    "transactional-email"
+  ],
   "license": "MIT",
-  "dependencies": {
-    "@matumailer/shared": "*"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devJuanes/MatuMailer.git",
+    "directory": "packages/sdk"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
+    "@matumailer/shared": "*",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2"
   },

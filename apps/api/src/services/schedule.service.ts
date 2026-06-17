@@ -2,6 +2,7 @@ import type { SendEmailPayload } from '@matumailer/shared';
 import { scheduledEmailsRepo, templatesRepo } from '@matumailer/database';
 import { renderTemplate } from '../lib/template-engine.js';
 import { sendEmail } from './email.service.js';
+import { assertCanSendForProject } from './plan.service.js';
 
 const MIN_LEAD_MS = 60_000;
 
@@ -61,6 +62,7 @@ export async function processScheduledEmailQueue(): Promise<number> {
   for (const job of due) {
     await scheduledEmailsRepo.markProcessing(job.id);
     try {
+      await assertCanSendForProject(job.project_id, { count: 1 });
       const payload = job.payload as SendEmailPayload;
       const result = await sendEmail({
         projectId: job.project_id,

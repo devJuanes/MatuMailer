@@ -11,6 +11,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
     "typecheck": "turbo run typecheck",
     "db:migrate-info": "turbo run db:seed --filter=@matumailer/database",
+    "publish:npm": "npm run build -- --filter=@matumailer/shared --filter=matumailer && npm publish -w matumailer --access public",
     "prepare": "husky"
   },
   "devDependencies": {

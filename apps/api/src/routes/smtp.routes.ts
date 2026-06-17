@@ -12,6 +12,8 @@ import { z } from 'zod';
 import { encrypt } from '../lib/crypto.js';
 import { checkDomainAuth } from '../lib/dns-check.js';
 import { testSmtpConnection } from '../services/email.service.js';
+import { assertCanConfigureSmtp } from '../services/plan.service.js';
+import { replyPlanLimitError } from '../lib/plan-errors.js';
 
 export async function smtpRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -113,6 +115,14 @@ export async function smtpRoutes(app: FastifyInstance) {
       }
 
       const body = request.body;
+
+      try {
+        await assertCanConfigureSmtp(request.userId!, project.id, body.username);
+      } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
+        throw err;
+      }
+
       const existing = await smtpConfigsRepo.findSmtpByProjectId(project.id);
       const passwordEncrypted =
         body.password && body.password !== 'placeholder'

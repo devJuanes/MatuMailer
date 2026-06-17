@@ -6,8 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/layout/page-header';
+import { PlanLimitBanner } from '@/components/billing/PlanLimitBanner';
+import { UpgradeButton } from '@/components/billing/UpgradeButton';
 import { useProjects } from '@/hooks/use-project';
+import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
+import { projectLimitState, limitMessage } from '@/lib/plan-limits-ui';
 import { FolderKanban, Key, Copy, Check, Trash2 } from 'lucide-react';
 
 interface ApiTokenRow {
@@ -19,12 +23,25 @@ interface ApiTokenRow {
 }
 
 export default function ProjectsPage() {
-  const { projects, refresh } = useProjects();
+  const { projects, refresh, loading: projectsLoading } = useProjects();
+  const { plan, isPremium, refresh: refreshPlan, loading: planLoading } = usePlan();
+
+  const projectCount = projects.length;
+  const {
+    allowed: allowCreate,
+    used: projectUsed,
+    max: projectLimit,
+  } = projectLimitState(plan, isPremium, projectCount);
+  const ready = !projectsLoading && (!planLoading || plan !== null || isPremium);
+  const blocked = ready && !allowCreate;
+  const canSubmit = ready && allowCreate;
+
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [tokensByProject, setTokensByProject] = useState<Record<string, ApiTokenRow[]>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   const loadTokens = useCallback(async (projectId: string) => {
     const res = await api<{ tokens: ApiTokenRow[] }>(`/api/projects/${projectId}/tokens`);
@@ -39,13 +56,22 @@ export default function ProjectsPage() {
 
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
-    await api('/api/projects', {
-      method: 'POST',
-      body: JSON.stringify({ name, slug: slug || name.toLowerCase().replace(/\s+/g, '-') }),
-    });
-    setName('');
-    setSlug('');
-    await refresh();
+    if (!canSubmit) return;
+    setError('');
+    try {
+      await api('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({ name, slug: slug || name.toLowerCase().replace(/\s+/g, '-') }),
+      });
+      setName('');
+      setSlug('');
+      setMessage('Proyecto creado correctamente.');
+      await refresh();
+      await refreshPlan();
+    } catch (err) {
+      setMessage('');
+      setError(err instanceof Error ? err.message : 'No se pudo crear el proyecto');
+    }
   }
 
   async function createToken(projectId: string) {
@@ -78,14 +104,43 @@ export default function ProjectsPage() {
 
   return (
     <div>
-      <PageHeader title="Proyectos" description="Gestiona proyectos y tokens API" showProject={false} />
+      <PageHeader
+        title="Proyectos"
+        description="Gestiona proyectos y tokens API"
+        showProject={false}
+      />
+
+      {!isPremium && ready && (
+        <PlanLimitBanner
+          label="Proyectos"
+          used={projectUsed}
+          max={projectLimit}
+          blocked={blocked}
+          showUsage
+          description={
+            allowCreate
+              ? 'Plan gratis: puedes tener 1 proyecto.'
+              : limitMessage('proyectos', projectUsed, projectLimit)
+          }
+        />
+      )}
+
+      {!ready && <p className="mb-4 text-sm text-muted-foreground">Verificando tu plan…</p>}
 
       {message && (
         <p className="mb-4 rounded-2xl bg-gold/15 px-4 py-2 text-sm text-charcoal">{message}</p>
       )}
+      {error && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-800">
+          <span>{error}</span>
+          {error.includes('Premium') || error.includes('gratis') ? (
+            <UpgradeButton size="sm" />
+          ) : null}
+        </div>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <Card>
+        <Card className={!canSubmit ? 'opacity-75' : undefined}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <FolderKanban className="h-5 w-5 text-gold" />
@@ -93,24 +148,35 @@ export default function ProjectsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={createProject} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Nombre</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            {!ready ? (
+              <p className="text-sm text-muted-foreground">Cargando…</p>
+            ) : blocked ? (
+              <div className="space-y-4 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Ya tienes el máximo de proyectos en el plan gratis.
+                </p>
+                <UpgradeButton className="w-full" label="Más proyectos con Premium" />
               </div>
-              <div className="space-y-2">
-                <Label>Slug</Label>
-                <Input
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  placeholder="mi-app"
-                  pattern="[a-z0-9-]+"
-                />
-              </div>
-              <Button type="submit" variant="gold" className="w-full">
-                Crear proyecto
-              </Button>
-            </form>
+            ) : (
+              <form onSubmit={createProject} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Nombre</Label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} required />
+                </div>
+                <div className="space-y-2">
+                  <Label>Slug</Label>
+                  <Input
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    placeholder="mi-app"
+                    pattern="[a-z0-9-]+"
+                  />
+                </div>
+                <Button type="submit" variant="gold" className="w-full" disabled={!canSubmit}>
+                  Crear proyecto
+                </Button>
+              </form>
+            )}
           </CardContent>
         </Card>
 
@@ -167,7 +233,7 @@ export default function ProjectsPage() {
                                 )}
                               </Button>
                             ) : (
-                              <span className="text-xs text-muted-foreground self-center">
+                              <span className="self-center text-xs text-muted-foreground">
                                 Genera un token nuevo para copiar
                               </span>
                             )}

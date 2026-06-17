@@ -1,0 +1,76 @@
+import type { SubscriptionPlanId } from '@matumailer/shared';
+
+export type { SubscriptionPlanId };
+
+export interface SubscriptionPlan {
+  id: SubscriptionPlanId;
+  name: string;
+  description: string;
+  amount: number;
+  months: number;
+  currency: 'COP';
+  badge?: string;
+  savings?: string;
+  featured?: boolean;
+}
+
+export const MONTHLY_PRICE = 25000;
+
+export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
+  {
+    id: 'plan-mensual',
+    name: 'Mensual',
+    description: 'Renovación cada mes. Ideal para empezar sin compromiso largo.',
+    amount: MONTHLY_PRICE,
+    months: 1,
+    currency: 'COP',
+  },
+  {
+    id: 'plan-semestral',
+    name: 'Semestral',
+    description: '6 meses Premium con 10% de descuento.',
+    amount: 135000,
+    months: 6,
+    currency: 'COP',
+    badge: '10% OFF',
+    savings: 'Ahorras $15.000 vs pagar mes a mes',
+    featured: true,
+  },
+  {
+    id: 'plan-anual',
+    name: 'Anual',
+    description: '12 meses con el mejor precio — 20% de descuento.',
+    amount: 240000,
+    months: 12,
+    currency: 'COP',
+    badge: '20% OFF',
+    savings: 'Ahorras $60.000 vs pagar mes a mes',
+  },
+];
+
+export const FREE_PLAN_FEATURES = [
+  '1 proyecto',
+  '1 configuración SMTP (única por cuenta)',
+  '3 plantillas personalizadas',
+  '5 correos de prueba',
+  '10 correos cada 10 horas',
+] as const;
+
+/** Límites plan gratis — espejo de @matumailer/shared para checks instantáneos en UI */
+export const FREE_LIMITS = {
+  maxProjects: 1,
+  maxSmtpConfigs: 1,
+  maxCustomTemplates: 3,
+  maxTestEmails: 5,
+  maxEmailsPerWindow: 10,
+  emailWindowHours: 10,
+} as const;
+
+export const PREMIUM_PLAN_FEATURES = [
+  'Proyectos ilimitados',
+  'SMTP en todos tus proyectos',
+  'Plantillas ilimitadas',
+  'Envío masivo',
+  'Envíos programados',
+  'Correos sin límite de cuota',
+] as const;

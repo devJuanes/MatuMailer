@@ -1,8 +1,14 @@
-import type { MatuMailerConfig, SendEmailPayload } from '@matumailer/shared';
+import type {
+  BulkSendFromJsonPayload,
+  BulkSendPayload,
+  BulkSendResult,
+  MatuMailerConfig,
+  SendEmailPayload,
+} from './types.js';
 import { MatuMailerError, parseApiError } from './errors.js';
 import { detectSmtp, loadEnvToken } from './smtp-detect.js';
 
-const DEFAULT_BASE_URL = 'https://api.matumailer.dev';
+const DEFAULT_BASE_URL = 'https://api.matucatalogo.com';
 
 export class MatuMailer {
   private readonly token: string;
@@ -34,6 +40,16 @@ export class MatuMailer {
     subject?: string,
   ): Promise<{ id: string; status: string }> {
     return this.send({ to, template, data, subject });
+  }
+
+  /** Envío masivo: un correo individual por destinatario (privacidad total). */
+  async sendBulk(payload: BulkSendPayload): Promise<BulkSendResult> {
+    return this.request('/api/emails/send/bulk', payload);
+  }
+
+  /** Envío masivo desde JSON de usuarios (objeto o array). */
+  async sendBulkFromJson(payload: BulkSendFromJsonPayload): Promise<BulkSendResult> {
+    return this.request('/api/emails/send/bulk-from-json', payload);
   }
 
   detectSmtp(email: string) {

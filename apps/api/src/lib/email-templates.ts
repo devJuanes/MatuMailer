@@ -70,4 +70,27 @@ export const SYSTEM_TEMPLATES = [
 </td></tr>`),
     variables: ['titulo', 'mensaje'],
   },
+  {
+    slug: 'campana',
+    name: 'Campaña / Aviso masivo',
+    subject: '{{titulo}}',
+    html_content: shell(`
+<tr><td style="padding:48px 40px 16px;text-align:center">
+  <div style="width:72px;height:72px;margin:0 auto 24px;border-radius:50%;background:linear-gradient(135deg,#c9a227,#f5e6b8);line-height:72px;font-size:32px">📬</div>
+  <h1 style="margin:0;font-size:28px;font-weight:700;color:#1c1917">Hola, {{primerNombre}}</h1>
+</td></tr>
+<tr><td style="padding:8px 40px 24px;text-align:center">
+  <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#c9a227">{{titulo}}</p>
+</td></tr>
+<tr><td style="padding:0 40px 32px">
+  <p style="margin:0;font-size:17px;line-height:1.75;color:#57534e;text-align:center">{{mensaje}}</p>
+</td></tr>
+<tr><td style="padding:0 40px 48px;text-align:center">
+  <a href="{{enlace}}" style="display:inline-block;padding:16px 40px;background:#c9a227;color:#1c1917;font-size:16px;font-weight:600;text-decoration:none;border-radius:999px">Ver más</a>
+</td></tr>
+<tr><td style="padding:0 40px 32px">
+  <p style="margin:0;font-size:13px;line-height:1.6;color:#a8a29e;text-align:center">Este mensaje fue enviado solo a tu correo. Nadie más puede ver tu dirección.</p>
+</td></tr>`),
+    variables: ['primerNombre', 'titulo', 'mensaje', 'enlace'],
+  },
 ];

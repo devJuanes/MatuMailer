@@ -1,37 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import {
-  BarChart3,
-  Bell,
-  BookOpen,
-  FileText,
-  FolderKanban,
-  LayoutDashboard,
-  LogOut,
-  Mail,
-  Server,
-  Settings,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
+import { Bell, BookOpen, Crown, LogOut, Menu } from 'lucide-react';
 import { clearToken } from '@/lib/api';
+import { usePlan } from '@/providers/plan-provider';
+import { Button } from '@/components/ui/button';
 
-const nav = [
-  { href: '/dashboard', label: 'Resumen' },
-  { href: '/dashboard/projects', label: 'Proyectos' },
-  { href: '/dashboard/smtp', label: 'SMTP' },
-  { href: '/dashboard/templates', label: 'Plantillas' },
-  { href: '/dashboard/creador', label: 'Creador' },
-  { href: '/dashboard/correo-prueba', label: 'Prueba' },
-  { href: '/dashboard/programados', label: 'Programados' },
-  { href: '/dashboard/logs', label: 'Correos' },
-  { href: '/dashboard/analytics', label: 'Analíticas' },
-];
+type TopNavProps = {
+  onMenuClick: () => void;
+};
 
-export function TopNav() {
-  const pathname = usePathname();
+export function TopNav({ onMenuClick }: TopNavProps) {
   const router = useRouter();
+  const { isPremium, loading } = usePlan();
 
   function logout() {
     clearToken();
@@ -39,36 +21,28 @@ export function TopNav() {
   }
 
   return (
-    <header className="sticky top-0 z-50 px-6 py-4">
-      <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4">
-        <Link
-          href="/dashboard"
-          className="flex shrink-0 items-center gap-2 rounded-full border border-white/70 bg-white/60 px-4 py-2 shadow-soft backdrop-blur-md"
+    <header className="sticky top-0 z-30 border-b border-white/60 bg-cream/80 px-4 py-3 backdrop-blur-md sm:px-6">
+      <div className="flex items-center justify-between gap-4">
+        <button
+          type="button"
+          className="rounded-full p-2.5 text-muted-foreground transition-colors hover:bg-white/70 lg:hidden"
+          aria-label="Abrir menú"
+          onClick={onMenuClick}
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gold font-bold text-charcoal text-sm">
-            M
-          </div>
-          <span className="font-semibold tracking-tight text-charcoal">MatuMailer</span>
-        </Link>
+          <Menu className="h-5 w-5" />
+        </button>
 
-        <nav className="hidden items-center gap-1 rounded-full border border-white/70 bg-white/50 p-1.5 shadow-soft backdrop-blur-md lg:flex">
-          {nav.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== '/dashboard' && pathname.startsWith(item.href));
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn('pill-nav', active ? 'pill-nav-active' : 'pill-nav-inactive')}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+        <div className="hidden flex-1 lg:block" />
 
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          {!loading && !isPremium && (
+            <Link href="/dashboard/premium">
+              <Button size="sm" className="hidden gap-1.5 sm:inline-flex">
+                <Crown className="h-4 w-4" />
+                Premium
+              </Button>
+            </Link>
+          )}
           <Link
             href="/dashboard/documentacion"
             className="hidden rounded-full p-2.5 text-muted-foreground transition-colors hover:bg-white/70 sm:flex"
@@ -97,35 +71,6 @@ export function TopNav() {
           </div>
         </div>
       </div>
-
-      <nav className="mx-auto mt-3 flex max-w-[1400px] gap-1 overflow-x-auto rounded-2xl border border-white/60 bg-white/40 p-1 backdrop-blur-sm lg:hidden">
-        {nav.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(item.href + '/');
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium',
-                active ? 'bg-charcoal text-white' : 'text-muted-foreground',
-              )}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
     </header>
   );
 }
-
-export const navIcons = {
-  dashboard: LayoutDashboard,
-  projects: FolderKanban,
-  smtp: Server,
-  templates: FileText,
-  logs: Mail,
-  analytics: BarChart3,
-  docs: BookOpen,
-  settings: Settings,
-};

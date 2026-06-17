@@ -7,15 +7,21 @@ import { API_TOKEN_PREFIX } from '@matumailer/shared';
 import { encrypt, hashToken, decrypt } from '../lib/crypto.js';
 import { getProjectSetupStatus } from '../lib/project-setup.js';
 import { SYSTEM_TEMPLATES } from '../lib/email-templates.js';
+import { assertCanCreateProject } from '../services/plan.service.js';
+import { replyPlanLimitError } from '../lib/plan-errors.js';
 import { z } from 'zod';
 
 export async function projectsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
 
-  server.get('/', { preHandler: [app.authenticate], schema: { tags: ['Projects'] } }, async (request) => {
-    const projects = await projectsRepo.findProjectsByUserId(request.userId!);
-    return { projects };
-  });
+  server.get(
+    '/',
+    { preHandler: [app.authenticate], schema: { tags: ['Projects'] } },
+    async (request) => {
+      const projects = await projectsRepo.findProjectsByUserId(request.userId!);
+      return { projects };
+    },
+  );
 
   server.post(
     '/',
@@ -24,6 +30,13 @@ export async function projectsRoutes(app: FastifyInstance) {
       schema: { body: createProjectSchema, tags: ['Projects'] },
     },
     async (request, reply) => {
+      try {
+        await assertCanCreateProject(request.userId!);
+      } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
+        throw err;
+      }
+
       const { name, slug, description } = request.body;
       const existing = await projectsRepo.findProjectBySlug(request.userId!, slug);
       if (existing) {

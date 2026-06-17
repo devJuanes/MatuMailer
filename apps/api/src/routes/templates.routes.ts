@@ -4,6 +4,8 @@ import { templateCreateSchema, templateUpdateSchema } from '@matumailer/shared';
 import { projectsRepo, templatesRepo } from '@matumailer/database';
 import { z } from 'zod';
 import { extractVariables, renderTemplate } from '../lib/template-engine.js';
+import { assertCanCreateTemplate } from '../services/plan.service.js';
+import { replyPlanLimitError } from '../lib/plan-errors.js';
 
 export async function templatesRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -38,6 +40,13 @@ export async function templatesRoutes(app: FastifyInstance) {
       const project = await projectsRepo.findProjectById(request.params.projectId);
       if (!project || project.user_id !== request.userId) {
         return reply.status(404).send({ error: 'Not Found' });
+      }
+
+      try {
+        await assertCanCreateTemplate(request.userId!);
+      } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
+        throw err;
       }
 
       const body = request.body;
@@ -153,7 +162,9 @@ export async function templatesRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Not Found' });
       }
       if (existing.is_system) {
-        return reply.status(403).send({ error: 'Forbidden', message: 'Cannot delete system template' });
+        return reply
+          .status(403)
+          .send({ error: 'Forbidden', message: 'Cannot delete system template' });
       }
 
       await templatesRepo.deleteTemplate(existing.id);
