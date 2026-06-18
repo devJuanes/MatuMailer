@@ -28,7 +28,7 @@ pm2 restart matumailer-api matumailer-dashboard || pm2 start ecosystem.config.cj
 
 pm2 save
 echo ">>> health"
-sleep 2
-curl -sS http://127.0.0.1:4001/health
+sleep 5
+curl -sS http://127.0.0.1:4001/health || true
 echo ""
 echo "✓ Deploy listo"

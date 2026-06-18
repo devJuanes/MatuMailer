@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Mail, MapPin, MessageCircle, Phone } from 'lucide-react';
 import { AppLogo } from '@/components/brand/AppLogo';
+import { SafeDiv } from '@/components/ui/safe-div';
 import { APP, CONTACT, MATUBYTE, mailtoUrl, whatsappUrl } from '@/lib/brand';
 
 export function LandingFooter() {
@@ -8,8 +9,8 @@ export function LandingFooter() {
 
   return (
     <footer className="relative z-10 border-t border-white/70 bg-charcoal text-slate-300">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
-        <div className="sm:col-span-2 lg:col-span-1">
+      <SafeDiv className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
+        <section className="sm:col-span-2 lg:col-span-1">
           <AppLogo size="md" />
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-slate-400">{APP.description}</p>
           <p className="mt-2 text-sm text-slate-400">{APP.tagline}</p>
@@ -24,10 +25,13 @@ export function LandingFooter() {
               {MATUBYTE.name}
             </a>
           </p>
-        </div>
+        </section>
 
-        <div>
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white">
+        <section aria-labelledby="footer-producto">
+          <h3
+            id="footer-producto"
+            className="mb-4 text-sm font-semibold uppercase tracking-wider text-white"
+          >
             Producto
           </h3>
           <ul className="space-y-2.5 text-sm">
@@ -62,10 +66,13 @@ export function LandingFooter() {
               </Link>
             </li>
           </ul>
-        </div>
+        </section>
 
-        <div>
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white">
+        <section aria-labelledby="footer-empresa">
+          <h3
+            id="footer-empresa"
+            className="mb-4 text-sm font-semibold uppercase tracking-wider text-white"
+          >
             Empresa
           </h3>
           <ul className="space-y-2.5 text-sm">
@@ -91,10 +98,13 @@ export function LandingFooter() {
             </li>
             <li className="text-slate-400">{MATUBYTE.tagline}</li>
           </ul>
-        </div>
+        </section>
 
-        <div>
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white">
+        <section aria-labelledby="footer-contacto">
+          <h3
+            id="footer-contacto"
+            className="mb-4 text-sm font-semibold uppercase tracking-wider text-white"
+          >
             Contacto
           </h3>
           <ul className="space-y-3 text-sm">
@@ -134,8 +144,8 @@ export function LandingFooter() {
               </span>
             </li>
           </ul>
-        </div>
-      </div>
+        </section>
+      </SafeDiv>
     </footer>
   );
 }

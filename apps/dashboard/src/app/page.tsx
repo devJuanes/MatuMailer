@@ -14,6 +14,7 @@ import {
   USE_CASES,
 } from '@/components/landing/content';
 import { Button } from '@/components/ui/button';
+import { SafeDiv } from '@/components/ui/safe-div';
 import { FREE_PLAN_FEATURES, MONTHLY_PRICE, PREMIUM_PLAN_FEATURES } from '@/constants/plans';
 import { APP, MATUBYTE } from '@/lib/brand';
 import { buildLandingJsonLd, buildLandingMetadata } from '@/lib/seo';
@@ -38,9 +39,9 @@ export default function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <div className="relative min-h-screen overflow-hidden bg-cream">
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-gold/15 via-transparent to-amber-50/30" />
-        <div className="landing-grid pointer-events-none absolute inset-0 opacity-40" />
+      <SafeDiv className="relative min-h-screen overflow-hidden bg-cream">
+        <SafeDiv className="pointer-events-none absolute inset-0 bg-gradient-to-br from-gold/15 via-transparent to-amber-50/30" />
+        <SafeDiv className="landing-grid pointer-events-none absolute inset-0 opacity-40" />
 
         <LandingHeader />
 
@@ -277,7 +278,7 @@ await mail.send({
         </main>
 
         <LandingFooter />
-      </div>
+      </SafeDiv>
     </>
   );
 }
