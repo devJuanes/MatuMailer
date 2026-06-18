@@ -1,6 +1,7 @@
 'use client';
 
 import { useProjects } from '@/hooks/use-project';
+import { PreloadInline } from '@/lib/preload';
 import { cn } from '@/lib/utils';
 
 export function ProjectSelector() {
@@ -8,8 +9,8 @@ export function ProjectSelector() {
 
   if (loading) {
     return (
-      <span className="rounded-full bg-white/60 px-4 py-2 text-sm text-muted-foreground">
-        Cargando...
+      <span className="inline-flex h-11 items-center rounded-full bg-white/60 px-4">
+        <PreloadInline />
       </span>
     );
   }

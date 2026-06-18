@@ -11,6 +11,7 @@ import { useProjects } from '@/hooks/use-project';
 import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
 import { canCreateTemplate, FREE_LIMITS } from '@/lib/plan-limits-ui';
+import { PreloadBlock } from '@/lib/preload';
 import type { EmailBlock } from '@/lib/email-builder';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
@@ -65,7 +66,7 @@ function CreadorInner() {
     );
   }
 
-  if (loading) return <p className="text-muted-foreground">Cargando plantilla…</p>;
+  if (loading) return <PreloadBlock minHeight="min-h-[12rem]" />;
 
   if (blockedNew) {
     return (
@@ -181,7 +182,7 @@ export default function CreadorPage() {
           <UpgradeButton label="Más plantillas con Premium" />
         )}
       </PageHeader>
-      <Suspense fallback={<p className="text-muted-foreground">Cargando…</p>}>
+      <Suspense fallback={<PreloadBlock minHeight="min-h-[12rem]" />}>
         <CreadorInner />
       </Suspense>
     </div>

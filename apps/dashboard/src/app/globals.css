@@ -65,4 +65,12 @@
   .input-crextio {
     @apply h-12 rounded-2xl border border-border/80 bg-white/80 px-4 text-sm shadow-sm backdrop-blur-sm transition-all placeholder:text-muted-foreground focus:border-gold/50 focus:outline-none focus:ring-2 focus:ring-gold/30;
   }
+
+  .landing-grid {
+    background-image:
+      linear-gradient(hsl(40 20% 88% / 0.6) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(40 20% 88% / 0.6) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: linear-gradient(to bottom, black, transparent 85%);
+  }
 }

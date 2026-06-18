@@ -12,6 +12,7 @@ import { useProjects } from '@/hooks/use-project';
 import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
 import { projectLimitState, limitMessage } from '@/lib/plan-limits-ui';
+import { PreloadBlock, PreloadGate } from '@/lib/preload';
 import { FolderKanban, Key, Copy, Check, Trash2 } from 'lucide-react';
 
 interface ApiTokenRow {
@@ -125,7 +126,7 @@ export default function ProjectsPage() {
         />
       )}
 
-      {!ready && <p className="mb-4 text-sm text-muted-foreground">Verificando tu plan…</p>}
+      {!ready && <PreloadBlock className="mb-4" minHeight="min-h-[4rem]" />}
 
       {message && (
         <p className="mb-4 rounded-2xl bg-gold/15 px-4 py-2 text-sm text-charcoal">{message}</p>
@@ -148,35 +149,35 @@ export default function ProjectsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {!ready ? (
-              <p className="text-sm text-muted-foreground">Cargando…</p>
-            ) : blocked ? (
-              <div className="space-y-4 text-center">
-                <p className="text-sm text-muted-foreground">
-                  Ya tienes el máximo de proyectos en el plan gratis.
-                </p>
-                <UpgradeButton className="w-full" label="Más proyectos con Premium" />
-              </div>
-            ) : (
-              <form onSubmit={createProject} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Nombre</Label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            <PreloadGate ready={ready} minHeight="min-h-[8rem]">
+              {blocked ? (
+                <div className="space-y-4 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Ya tienes el máximo de proyectos en el plan gratis.
+                  </p>
+                  <UpgradeButton className="w-full" label="Más proyectos con Premium" />
                 </div>
-                <div className="space-y-2">
-                  <Label>Slug</Label>
-                  <Input
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                    placeholder="mi-app"
-                    pattern="[a-z0-9-]+"
-                  />
-                </div>
-                <Button type="submit" variant="gold" className="w-full" disabled={!canSubmit}>
-                  Crear proyecto
-                </Button>
-              </form>
-            )}
+              ) : (
+                <form onSubmit={createProject} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Nombre</Label>
+                    <Input value={name} onChange={(e) => setName(e.target.value)} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Slug</Label>
+                    <Input
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value)}
+                      placeholder="mi-app"
+                      pattern="[a-z0-9-]+"
+                    />
+                  </div>
+                  <Button type="submit" variant="gold" className="w-full" disabled={!canSubmit}>
+                    Crear proyecto
+                  </Button>
+                </form>
+              )}
+            </PreloadGate>
           </CardContent>
         </Card>
 

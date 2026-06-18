@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { X, Lock } from 'lucide-react';
+import { AppLogo } from '@/components/brand/AppLogo';
 import { cn } from '@/lib/utils';
 import { dashboardNav, isNavActive } from './nav-config';
 import { usePlan } from '@/providers/plan-provider';
@@ -34,11 +35,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         )}
       >
         <div className="flex items-center justify-between gap-3 px-5 py-5">
-          <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5" onClick={onClose}>
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold text-sm font-bold text-charcoal">
-              M
-            </div>
-            <span className="truncate font-semibold tracking-tight text-charcoal">MatuMailer</span>
+          <Link href="/dashboard" className="flex min-w-0 items-center" onClick={onClose}>
+            <AppLogo size="sm" />
           </Link>
           <button
             type="button"

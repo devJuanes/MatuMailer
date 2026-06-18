@@ -50,8 +50,8 @@ type PlanContextValue = {
 const PlanContext = createContext<PlanContextValue | null>(null);
 
 export function PlanProvider({ children }: { children: ReactNode }) {
-  const [plan, setPlan] = useState<PlanStatus | null>(() => readCachedPlan());
-  const [loading, setLoading] = useState(() => !readCachedPlan());
+  const [plan, setPlan] = useState<PlanStatus | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
@@ -66,6 +66,11 @@ export function PlanProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const cached = readCachedPlan();
+    if (cached) {
+      setPlan(cached);
+      setLoading(false);
+    }
     void refresh();
   }, [refresh]);
 

@@ -78,6 +78,68 @@ export function confirmPayment(reference: string) {
   );
 }
 
+export function signupCheckout(
+  name: string,
+  email: string,
+  password: string,
+  planId: SubscriptionPlanId,
+) {
+  return api<{ checkoutUrl: string; reference: string; amount: number; currency: string }>(
+    '/api/billing/signup-checkout',
+    {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password, planId }),
+      token: null,
+    },
+  );
+}
+
+export function signupConfirm(reference: string) {
+  return api<{
+    paid: boolean;
+    status?: string;
+    accountCreated: boolean;
+    email?: string;
+    token?: string;
+    alreadyCompleted?: boolean;
+  }>('/api/billing/signup-confirm', {
+    method: 'POST',
+    body: JSON.stringify({ reference }),
+    token: null,
+  });
+}
+
+export const SIGNUP_STORAGE_KEY = 'matumailer_signup_draft';
+
+export interface SignupDraft {
+  name: string;
+  email: string;
+  password: string;
+  planId: SubscriptionPlanId;
+}
+
+export function saveSignupDraft(draft: SignupDraft) {
+  if (typeof window !== 'undefined') {
+    sessionStorage.setItem(SIGNUP_STORAGE_KEY, JSON.stringify(draft));
+  }
+}
+
+export function loadSignupDraft(): SignupDraft | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(SIGNUP_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as SignupDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearSignupDraft() {
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem(SIGNUP_STORAGE_KEY);
+  }
+}
+
 export function isPremium(status: PlanStatus | null): boolean {
   return status?.tier === 'premium';
 }

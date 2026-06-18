@@ -21,6 +21,7 @@ import {
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PreloadBlock } from '@/lib/preload';
 import { PremiumGate } from '@/components/billing/PremiumGate';
 
 interface Template {
@@ -351,7 +352,7 @@ export default function EnvioMasivoPage() {
                       />
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">Cargando vista previa…</p>
+                    <PreloadBlock minHeight="min-h-[8rem]" />
                   )}
                 </>
               ) : (

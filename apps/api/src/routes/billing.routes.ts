@@ -5,6 +5,10 @@ import { subscriptionsRepo, usersRepo } from '@matumailer/database';
 import { z } from 'zod';
 import { getPlanStatus } from '../services/plan.service.js';
 import {
+  createSignupCheckout,
+  safeConfirmSignupPayment,
+} from '../services/signup-billing.service.js';
+import {
   createPaymentLink,
   getAppUrl,
   getPaymentStatus,
@@ -154,6 +158,61 @@ export async function billingRoutes(app: FastifyInstance) {
       });
 
       return { paid: true, status, subscription };
+    },
+  );
+
+  server.post(
+    '/signup-checkout',
+    {
+      schema: {
+        body: z.object({
+          name: z.string().min(1),
+          email: z.string().email(),
+          password: z.string().min(8),
+          planId: z.enum(['plan-mensual', 'plan-semestral', 'plan-anual']),
+        }),
+        tags: ['Billing'],
+      },
+    },
+    async (request, reply) => {
+      if (!isPaymatuConfigured()) {
+        return reply
+          .status(503)
+          .send({ error: 'PAYMENTS_NOT_CONFIGURED', message: 'Pagos no configurados' });
+      }
+
+      try {
+        return await createSignupCheckout(request.body);
+      } catch (err) {
+        const statusCode = (err as { statusCode?: number }).statusCode ?? 500;
+        const message = err instanceof Error ? err.message : 'Error al iniciar pago';
+        return reply.status(statusCode).send({ error: 'SIGNUP_CHECKOUT_FAILED', message });
+      }
+    },
+  );
+
+  server.post(
+    '/signup-confirm',
+    {
+      schema: {
+        body: z.object({ reference: z.string().min(1) }),
+        tags: ['Billing'],
+      },
+    },
+    async (request, reply) => {
+      if (!isPaymatuConfigured()) {
+        return reply
+          .status(503)
+          .send({ error: 'PAYMENTS_NOT_CONFIGURED', message: 'Pagos no configurados' });
+      }
+
+      try {
+        return await safeConfirmSignupPayment(request.body.reference);
+      } catch (err) {
+        const statusCode = (err as { statusCode?: number }).statusCode ?? 500;
+        const message = err instanceof Error ? err.message : 'Error al confirmar registro';
+        return reply.status(statusCode).send({ error: 'SIGNUP_CONFIRM_FAILED', message });
+      }
     },
   );
 }

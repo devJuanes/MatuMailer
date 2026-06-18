@@ -19,4 +19,5 @@ export * as emailLogsRepo from './repositories/email-logs';
 export * as onboardingRepo from './repositories/onboarding';
 export * as scheduledEmailsRepo from './repositories/scheduled-emails';
 export * as subscriptionsRepo from './repositories/subscriptions';
+export * as pendingSignupsRepo from './repositories/pending-signups';
 export * as planUsageRepo from './repositories/plan-usage';

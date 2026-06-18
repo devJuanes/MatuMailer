@@ -1,0 +1,19 @@
+{
+  "name": "MatuMailer — Infraestructura de correo para desarrolladores",
+  "short_name": "MatuMailer",
+  "description": "Plataforma de correo transaccional: SMTP, plantillas, SDK npm y API REST. Desarrollado por MatuByte S.A.S.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf8f5",
+  "theme_color": "#f59e0b",
+  "lang": "es",
+  "categories": ["developer", "productivity", "business"],
+  "icons": [
+    {
+      "src": "/matumailer.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Crown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PreloadBlock } from '@/lib/preload';
 import { usePlan } from '@/providers/plan-provider';
 
 type PremiumGateProps = {
@@ -13,7 +14,7 @@ type PremiumGateProps = {
 export function PremiumGate({ feature, children }: PremiumGateProps) {
   const { isPremium, loading } = usePlan();
 
-  if (loading) return null;
+  if (loading) return <PreloadBlock minHeight="min-h-[16rem]" />;
   if (isPremium) return <>{children}</>;
 
   return (

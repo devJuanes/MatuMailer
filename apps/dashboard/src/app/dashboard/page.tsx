@@ -1,6 +1,17 @@
 'use client';
 
-import { Mail, Send, CheckCircle, XCircle, Zap, Code2, Sparkles, ArrowRight } from 'lucide-react';
+import {
+  Mail,
+  Send,
+  CheckCircle,
+  XCircle,
+  Zap,
+  Code2,
+  Sparkles,
+  ArrowRight,
+  Check,
+  Circle,
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ProjectSelector } from '@/components/layout/project-selector';
 import { useProjects } from '@/hooks/use-project';
@@ -62,6 +73,7 @@ export default function DashboardPage() {
   const completed = setup?.completedCount ?? 0;
   const total = setup?.totalSteps ?? 4;
   const allDone = setup && completed === total;
+  const nextTaskIndex = tasks.findIndex((t) => !t.done);
 
   return (
     <div className="space-y-8 pt-4">
@@ -145,7 +157,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-sm leading-relaxed text-charcoal/80">
-{`npm install matumailer
+              {`npm install matumailer
 
 import { MatuMailer } from 'matumailer';
 
@@ -172,43 +184,56 @@ await mail.send({
 
         <Card variant="dark">
           <CardHeader>
-            <CardTitle className="text-white">
+            <CardTitle className="flex items-baseline gap-2 text-white">
               Configuración
-              <span className="ml-2 text-gold">
-                {completed}/{total}
+              <span className="text-sm font-normal text-white/50">
+                <span className="font-bold text-gold">{completed}</span>/{total}
               </span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {tasks.map((task) => (
-              <Link
-                key={task.label}
-                href={task.href}
-                className={cn(
-                  'flex items-center justify-between rounded-2xl px-4 py-3 transition-colors',
-                  task.done ? 'bg-gold/20 hover:bg-gold/25' : 'bg-white/10 hover:bg-white/15',
-                )}
-              >
-                <span
+          <CardContent className="space-y-2">
+            {tasks.map((task, index) => {
+              const isDone = task.done;
+              const isNext = !isDone && index === nextTaskIndex;
+
+              return (
+                <Link
+                  key={task.label}
+                  href={task.href}
                   className={cn(
-                    'text-sm',
-                    task.done ? 'text-charcoal font-medium' : 'text-white/90',
+                    'flex items-center justify-between gap-3 rounded-xl border px-4 py-2.5 transition-all',
+                    isDone &&
+                      'border-gold/50 bg-gold text-charcoal shadow-sm shadow-gold/20 hover:bg-gold-light',
+                    !isDone &&
+                      isNext &&
+                      'border-gold/35 bg-white/10 text-white hover:border-gold/50 hover:bg-white/[0.12]',
+                    !isDone &&
+                      !isNext &&
+                      'border-white/10 bg-white/[0.04] text-white/75 hover:border-white/20 hover:bg-white/[0.08]',
                   )}
                 >
-                  {task.label}
-                </span>
-                <span
-                  className={cn(
-                    'flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold',
-                    task.done ? 'bg-gold text-charcoal' : 'bg-white/20 text-white/60',
-                  )}
-                >
-                  {task.done ? '✓' : '○'}
-                </span>
-              </Link>
-            ))}
+                  <span className={cn('text-sm', isDone && 'font-semibold')}>{task.label}</span>
+                  <span
+                    className={cn(
+                      'flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
+                      isDone && 'bg-charcoal/15 text-charcoal',
+                      !isDone && isNext && 'border-2 border-gold/60 bg-gold/20 text-gold',
+                      !isDone && !isNext && 'border border-white/25 bg-transparent text-white/40',
+                    )}
+                  >
+                    {isDone ? (
+                      <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                    ) : (
+                      <Circle className={cn('h-2 w-2 fill-current', isNext && 'text-gold')} />
+                    )}
+                  </span>
+                </Link>
+              );
+            })}
             {!activeId && (
-              <p className="text-sm text-white/60">Selecciona un proyecto para ver el progreso.</p>
+              <p className="pt-1 text-sm text-white/50">
+                Selecciona un proyecto para ver el progreso.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -224,7 +249,10 @@ await mail.send({
           </CardHeader>
           <CardContent className="divide-y divide-border/40">
             {recentLogs.map((log) => (
-              <div key={log.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+              <div
+                key={log.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
+              >
                 <div>
                   <p className="font-medium text-charcoal">{log.subject}</p>
                   <p className="text-muted-foreground">{log.to_email}</p>
