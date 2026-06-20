@@ -1,4 +1,4 @@
-import type { ApiToken, Project } from '@matumailer/shared';
+import type { ApiToken } from '@matumailer/shared';
 import { getMatuDb } from '../client';
 import { insertOne, updateMany } from '../helpers';
 
@@ -10,7 +10,9 @@ export async function findTokensByProjectId(projectId: string): Promise<ApiToken
   const db = getMatuDb();
   const { data, error } = await db
     .from('api_tokens')
-    .select('id, project_id, name, token_prefix, token_encrypted, last_used_at, expires_at, created_at')
+    .select(
+      'id, project_id, name, token_prefix, token_encrypted, last_used_at, expires_at, created_at',
+    )
     .eq('project_id', projectId)
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
@@ -31,17 +33,15 @@ export async function findTokenById(id: string): Promise<ApiToken | null> {
   return data as ApiToken;
 }
 
-export async function findTokenByHash(tokenHash: string): Promise<
-  (ApiToken & { projects: Project }) | null
-> {
+export async function findTokenByHash(tokenHash: string): Promise<ApiToken | null> {
   const db = getMatuDb();
   const { data, error } = await db
     .from('api_tokens')
-    .select('*, projects(*)')
+    .select('*')
     .eq('token_hash', tokenHash)
-    .single();
+    .maybeSingle();
   if (error || !data) return null;
-  return data as ApiToken & { projects: Project };
+  return data as ApiToken;
 }
 
 export async function createApiToken(input: {

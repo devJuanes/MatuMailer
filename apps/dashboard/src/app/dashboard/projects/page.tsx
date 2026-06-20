@@ -76,12 +76,25 @@ export default function ProjectsPage() {
   }
 
   async function createToken(projectId: string) {
-    await api(`/api/projects/${projectId}/tokens`, {
+    const res = await api<{ secret: string }>(`/api/projects/${projectId}/tokens`, {
       method: 'POST',
       body: JSON.stringify({ name: 'Token principal' }),
     });
     await loadTokens(projectId);
-    setMessage('Token creado. Usa «Copiar token» cuando lo necesites.');
+    if (res.secret) {
+      try {
+        await navigator.clipboard.writeText(res.secret);
+        setMessage(
+          `Token creado y copiado: ${res.secret.slice(0, 12)}… — pégalo en MATUMAILER_TOKEN de tu .env`,
+        );
+      } catch {
+        setMessage(
+          `Token creado: ${res.secret} — cópialo ahora, no se volverá a mostrar completo.`,
+        );
+      }
+    } else {
+      setMessage('Token creado. Usa «Copiar token» cuando lo necesites.');
+    }
   }
 
   async function copyToken(projectId: string, tokenId: string) {
