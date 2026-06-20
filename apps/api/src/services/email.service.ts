@@ -1,7 +1,11 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import type { SmtpConfig } from '@matumailer/shared';
 import { emailLogsRepo, smtpConfigsRepo, templatesRepo } from '@matumailer/database';
-import { isFromDomainAligned } from '@matumailer/shared';
+import {
+  isFromDomainAligned,
+  normalizeSmtpPassword,
+  normalizeSmtpUsername,
+} from '@matumailer/shared';
 import { decrypt } from '../lib/crypto.js';
 import {
   buildMessageId,
@@ -10,18 +14,29 @@ import {
 } from '../lib/deliverability-mail.js';
 import { renderTemplate } from '../lib/template-engine.js';
 
+function smtpAuth(config: SmtpConfig) {
+  const user = normalizeSmtpUsername(config.username);
+  const pass = normalizeSmtpPassword(config.provider, decrypt(config.password_encrypted));
+  return { user, pass };
+}
+
 export async function createTransporter(config: SmtpConfig): Promise<Transporter> {
-  const password = decrypt(config.password_encrypted);
+  const auth = smtpAuth(config);
   const port = config.port;
+
+  if (config.provider === 'gmail') {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth,
+    });
+  }
+
   return nodemailer.createTransport({
     host: config.host,
     port,
     secure: config.secure || port === 465,
     requireTLS: port === 587,
-    auth: {
-      user: config.username,
-      pass: password,
-    },
+    auth,
     tls: {
       minVersion: 'TLSv1.2',
     },
@@ -29,12 +44,23 @@ export async function createTransporter(config: SmtpConfig): Promise<Transporter
 }
 
 export async function testSmtpConnection(config: SmtpConfig): Promise<boolean> {
-  const transport = await createTransporter(config);
+  const tryVerify = async (cfg: SmtpConfig) => {
+    const transport = await createTransporter(cfg);
+    try {
+      await transport.verify();
+      return true;
+    } finally {
+      transport.close();
+    }
+  };
+
   try {
-    await transport.verify();
-    return true;
-  } finally {
-    transport.close();
+    return await tryVerify(config);
+  } catch (firstErr) {
+    if (config.provider === 'gmail' && config.port === 587 && !config.secure) {
+      return await tryVerify({ ...config, port: 465, secure: true });
+    }
+    throw firstErr;
   }
 }
 

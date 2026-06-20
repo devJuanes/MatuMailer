@@ -4,6 +4,10 @@ import {
   buildDeliverabilityReport,
   detectSmtpProvider,
   isFromDomainAligned,
+  normalizeSmtpEmail,
+  normalizeSmtpPassword,
+  normalizeSmtpUsername,
+  smtpAuthErrorMessage,
   smtpConfigSchema,
   smtpDetectSchema,
 } from '@matumailer/shared';
@@ -124,20 +128,29 @@ export async function smtpRoutes(app: FastifyInstance) {
       }
 
       const existing = await smtpConfigsRepo.findSmtpByProjectId(project.id);
-      const passwordEncrypted =
-        body.password && body.password !== 'placeholder'
-          ? encrypt(body.password)
-          : (existing?.password_encrypted ?? encrypt(body.password));
+      const rawPassword = body.password?.trim() ?? '';
+      const isPlaceholder = !rawPassword || rawPassword === 'placeholder';
+
+      if (!existing && isPlaceholder) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'La contraseña de aplicación es obligatoria al configurar SMTP por primera vez.',
+        });
+      }
+
+      const passwordEncrypted = !isPlaceholder
+        ? encrypt(normalizeSmtpPassword(body.provider, rawPassword))
+        : existing!.password_encrypted;
 
       const config = await smtpConfigsRepo.upsertSmtpConfig(project.id, {
         provider: body.provider,
         host: body.host,
         port: body.port,
         secure: body.secure,
-        username: body.username,
+        username: normalizeSmtpUsername(body.username),
         password_encrypted: passwordEncrypted,
-        from_email: body.fromEmail,
-        from_name: body.fromName ?? null,
+        from_email: normalizeSmtpEmail(body.fromEmail),
+        from_name: body.fromName?.trim() ?? null,
       });
 
       await onboardingRepo.markSmtpCompleted(project.id);
@@ -160,7 +173,11 @@ export async function smtpRoutes(app: FastifyInstance) {
     '/:projectId/test',
     {
       preHandler: [app.authenticate],
-      schema: { params: z.object({ projectId: z.string().uuid() }), tags: ['SMTP'] },
+      schema: {
+        params: z.object({ projectId: z.string().uuid() }),
+        body: smtpConfigSchema.partial().optional(),
+        tags: ['SMTP'],
+      },
     },
     async (request, reply) => {
       const project = await projectsRepo.findProjectById(request.params.projectId);
@@ -168,22 +185,54 @@ export async function smtpRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Not Found' });
       }
 
-      const config = await smtpConfigsRepo.findSmtpByProjectId(project.id);
-      if (!config) {
+      const stored = await smtpConfigsRepo.findSmtpByProjectId(project.id);
+      const body = request.body;
+
+      if (!stored && !body) {
         return reply.status(400).send({ error: 'Bad Request', message: 'SMTP not configured' });
       }
 
+      const rawPassword = body?.password?.trim() ?? '';
+      const isPlaceholder = !rawPassword || rawPassword === 'placeholder';
+      const provider = body?.provider ?? stored?.provider ?? 'custom';
+
+      if (!stored && isPlaceholder) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'Indica la contraseña de aplicación antes de probar la conexión.',
+        });
+      }
+
+      const testConfig = {
+        provider,
+        host: body?.host ?? stored!.host,
+        port: body?.port ?? stored!.port,
+        secure: body?.secure ?? stored!.secure,
+        username: normalizeSmtpUsername(body?.username ?? stored!.username),
+        password_encrypted: !isPlaceholder
+          ? encrypt(normalizeSmtpPassword(provider, rawPassword))
+          : stored!.password_encrypted,
+        from_email: normalizeSmtpEmail(body?.fromEmail ?? stored!.from_email),
+        from_name: body?.fromName?.trim() ?? stored!.from_name,
+        is_verified: stored?.is_verified ?? false,
+        project_id: project.id,
+        id: stored?.id ?? '',
+        created_at: stored?.created_at ?? new Date().toISOString(),
+        updated_at: stored?.updated_at ?? new Date().toISOString(),
+      };
+
       try {
-        const ok = await testSmtpConnection(config);
-        if (ok) {
+        const ok = await testSmtpConnection(testConfig);
+        if (ok && stored) {
           await smtpConfigsRepo.markSmtpVerified(project.id);
           await onboardingRepo.markSmtpCompleted(project.id);
         }
-        return { success: ok, verified: ok };
+        return { success: ok, verified: ok && !!stored };
       } catch (err) {
+        const raw = err instanceof Error ? err.message : 'Connection failed';
         return reply.status(400).send({
           success: false,
-          message: err instanceof Error ? err.message : 'Connection failed',
+          message: smtpAuthErrorMessage(provider, raw),
         });
       }
     },

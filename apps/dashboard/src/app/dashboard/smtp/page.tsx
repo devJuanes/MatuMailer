@@ -103,16 +103,20 @@ export default function SmtpPage() {
 
   async function detectProvider() {
     if (!form.fromEmail) return;
-    const res = await api<{ detected: boolean; host?: string; port?: number; provider?: string }>(
-      '/api/smtp/detect',
-      { method: 'POST', body: JSON.stringify({ email: form.fromEmail }) },
-    );
+    const res = await api<{
+      detected: boolean;
+      host?: string;
+      port?: number;
+      provider?: string;
+      secure?: boolean;
+    }>('/api/smtp/detect', { method: 'POST', body: JSON.stringify({ email: form.fromEmail }) });
     if (res.detected && res.host) {
       setForm((f) => ({
         ...f,
         provider: res.provider ?? f.provider,
         host: res.host!,
         port: res.port ?? f.port,
+        secure: res.secure ?? f.secure,
       }));
       setMessage('Proveedor detectado automáticamente');
     }
@@ -120,30 +124,38 @@ export default function SmtpPage() {
 
   async function save() {
     if (!activeId || !allowConfigure) return;
-    const res = await api<{
-      warnings?: string[];
-    }>(`/api/smtp/${activeId}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        provider: form.provider,
-        host: form.host,
-        port: Number(form.port),
-        secure: form.secure,
-        username: form.username,
-        password: form.password || 'placeholder',
-        fromEmail: form.fromEmail,
-        fromName: form.fromName || undefined,
-      }),
-    });
-    loadDeliverability();
-    setHasExistingConfig(true);
-    await refreshPlan();
-    const warn = res.warnings?.[0];
-    setMessage(
-      warn
-        ? `Guardado. Aviso entregabilidad: ${warn}`
-        : 'Configuración guardada. Lista para bandeja principal (SPF alineado).',
-    );
+    if (!hasExistingConfig && !form.password.trim()) {
+      setMessage('Pega la contraseña de aplicación antes de guardar.');
+      return;
+    }
+    try {
+      const res = await api<{
+        warnings?: string[];
+      }>(`/api/smtp/${activeId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          provider: form.provider,
+          host: form.host,
+          port: Number(form.port),
+          secure: form.secure,
+          username: form.username.trim(),
+          password: form.password.trim() || 'placeholder',
+          fromEmail: form.fromEmail.trim(),
+          fromName: form.fromName.trim() || undefined,
+        }),
+      });
+      loadDeliverability();
+      setHasExistingConfig(true);
+      await refreshPlan();
+      const warn = res.warnings?.[0];
+      setMessage(
+        warn
+          ? `Guardado. Aviso entregabilidad: ${warn}`
+          : 'Configuración guardada. Lista para bandeja principal (SPF alineado).',
+      );
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
   }
 
   async function checkDns() {
@@ -159,12 +171,31 @@ export default function SmtpPage() {
 
   async function testConnection() {
     if (!activeId) return;
-    const res = await api<{ success: boolean; message?: string }>(`/api/smtp/${activeId}/test`, {
-      method: 'POST',
-    });
-    setVerified(res.success);
-    setMessage(res.success ? '¡Conexión verificada!' : (res.message ?? 'La prueba falló'));
-    if (res.success) loadDeliverability();
+    if (!hasExistingConfig && !form.password.trim()) {
+      setMessage('Pega la contraseña de aplicación antes de probar.');
+      return;
+    }
+    try {
+      const res = await api<{ success: boolean; message?: string }>(`/api/smtp/${activeId}/test`, {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: form.provider,
+          host: form.host,
+          port: Number(form.port),
+          secure: form.secure,
+          username: form.username.trim(),
+          password: form.password.trim() || 'placeholder',
+          fromEmail: form.fromEmail.trim(),
+          fromName: form.fromName.trim() || undefined,
+        }),
+      });
+      setVerified(res.success);
+      setMessage(res.success ? '¡Conexión verificada!' : (res.message ?? 'La prueba falló'));
+      if (res.success) loadDeliverability();
+    } catch (e) {
+      setVerified(false);
+      setMessage((e as Error).message);
+    }
   }
 
   const domainsMatch =
