@@ -19,6 +19,7 @@
     "@fastify/swagger-ui": "^5.2.0",
     "@matumailer/database": "*",
     "@matumailer/shared": "*",
+    "@matuops/app-sdk": "file:../../../matuops/packages/app-sdk",
     "bcrypt": "^5.1.1",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.0",

@@ -14,6 +14,7 @@ import { templatesRoutes } from './routes/templates.routes.js';
 import { emailsRoutes } from './routes/emails.routes.js';
 import { billingRoutes } from './routes/billing.routes.js';
 import { startScheduleWorker } from './services/schedule.service.js';
+import { getMatuOps, reportMatuOpsError, startMatuOps, stopMatuOps } from './lib/matuops.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -75,6 +76,19 @@ async function buildServer() {
   await app.register(emailsRoutes, { prefix: '/api/emails' });
   await app.register(billingRoutes, { prefix: '/api/billing' });
 
+  app.setErrorHandler(async (error, request, reply) => {
+    const err = error instanceof Error ? error : new Error(String(error));
+    request.log.error({ err, url: request.url }, 'request error');
+    await reportMatuOpsError(err, { url: request.url, method: request.method }).catch(
+      () => undefined,
+    );
+    const status = (error as { statusCode?: number }).statusCode ?? 500;
+    return reply.status(status).send({
+      error: err.message || 'Internal Server Error',
+      requestId: request.id,
+    });
+  });
+
   return app;
 }
 
@@ -94,14 +108,33 @@ async function main() {
     throw err;
   }
   startScheduleWorker();
+  const matuops = startMatuOps();
   console.log(`🚀 MatuMailer API en http://localhost:${PORT}`);
   console.log(`📚 Documentación: http://localhost:${PORT}/docs`);
   console.log(
     `⏱️  Cola de envíos programados activa (cada ${process.env.SCHEDULER_INTERVAL_MS ?? 30000}ms)`,
   );
+  console.log(
+    matuops
+      ? '✅ MatuOps: monitoreo activo (heartbeat + logs + errores)'
+      : '⚠️  MatuOps: sin token — define MATUOPS_APP_TOKEN en .env',
+  );
 }
 
-main().catch((err) => {
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, async () => {
+    getMatuOps()
+      ?.reportLog(`MatuMailer API deteniéndose (${signal})`, 'warning', { component: 'api' })
+      .catch(() => undefined);
+    stopMatuOps();
+    process.exit(0);
+  });
+}
+
+main().catch(async (err) => {
   console.error(err);
+  await reportMatuOpsError(err instanceof Error ? err : { message: String(err) }, {
+    phase: 'startup',
+  }).catch(() => undefined);
   process.exit(1);
 });
