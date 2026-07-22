@@ -20,10 +20,16 @@ import {
 } from '@matumailer/database';
 import { z } from 'zod';
 import { renderTemplate } from '../lib/template-engine.js';
-import { sendBulkEmail, sendEmail } from '../services/email.service.js';
-import { enqueueScheduledEmail } from '../services/schedule.service.js';
+import { sendBulkEmail, sendEmail, sendToGroup } from '../services/email.service.js';
+import {
+  enqueueBulkCampaign,
+  enqueueGroupCampaign,
+  enqueueScheduledEmail,
+} from '../services/schedule.service.js';
 import { assertCanSendForProject } from '../services/plan.service.js';
 import { replyPlanLimitError } from '../lib/plan-errors.js';
+import { campaignsRepo, contactsRepo, emailEventsRepo } from '@matumailer/database';
+import { humanizeEmailError } from '../lib/humanize-error.js';
 
 export async function emailsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -123,7 +129,8 @@ export async function emailsRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Not Found' });
       }
       const stats = await emailLogsRepo.getEmailStats(project.id);
-      return { stats };
+      const events = await emailEventsRepo.countByProject(project.id);
+      return { stats: { ...stats, ...events } };
     },
   );
 
@@ -275,6 +282,27 @@ export async function emailsRoutes(app: FastifyInstance) {
       }
 
       try {
+        if (request.body.scheduledAt) {
+          await assertCanSendForProject(project.id, {
+            bulk: true,
+            schedule: true,
+            count: request.body.recipients.length,
+          });
+          const result = await enqueueBulkCampaign({
+            projectId: project.id,
+            recipients: request.body.recipients,
+            template: request.body.template,
+            subject: request.body.subject,
+            scheduledAt: request.body.scheduledAt,
+            campaignName: request.body.campaignName,
+          });
+          return reply.status(201).send({
+            success: true,
+            scheduled: true,
+            campaignId: result.campaign.id,
+            total: result.total,
+          });
+        }
         await assertCanSendForProject(project.id, {
           bulk: true,
           count: request.body.recipients.length,
@@ -291,12 +319,14 @@ export async function emailsRoutes(app: FastifyInstance) {
           code === 'SMTP_NOT_CONFIGURED' ||
           code === 'SMTP_NOT_VERIFIED' ||
           code === 'SMTP_FROM_DOMAIN_MISMATCH' ||
-          code === 'TEMPLATE_NOT_FOUND'
+          code === 'TEMPLATE_NOT_FOUND' ||
+          code === 'SCHEDULE_TOO_SOON' ||
+          code === 'INVALID_SCHEDULE_TIME'
             ? 400
             : 500;
         return reply.status(status).send({
           error: code,
-          message: err instanceof Error ? err.message : 'No se pudo completar el envío masivo',
+          message: humanizeEmailError(code),
         });
       }
     },
@@ -316,6 +346,27 @@ export async function emailsRoutes(app: FastifyInstance) {
         });
       }
       try {
+        if (request.body.scheduledAt) {
+          await assertCanSendForProject(request.projectId, {
+            bulk: true,
+            schedule: true,
+            count: request.body.recipients.length,
+          });
+          const result = await enqueueBulkCampaign({
+            projectId: request.projectId,
+            recipients: request.body.recipients,
+            template: request.body.template,
+            subject: request.body.subject,
+            scheduledAt: request.body.scheduledAt,
+            campaignName: request.body.campaignName,
+          });
+          return reply.status(201).send({
+            success: true,
+            scheduled: true,
+            campaignId: result.campaign.id,
+            total: result.total,
+          });
+        }
         await assertCanSendForProject(request.projectId, {
           bulk: true,
           count: request.body.recipients.length,
@@ -332,12 +383,14 @@ export async function emailsRoutes(app: FastifyInstance) {
           code === 'SMTP_NOT_CONFIGURED' ||
           code === 'SMTP_NOT_VERIFIED' ||
           code === 'SMTP_FROM_DOMAIN_MISMATCH' ||
-          code === 'TEMPLATE_NOT_FOUND'
+          code === 'TEMPLATE_NOT_FOUND' ||
+          code === 'SCHEDULE_TOO_SOON' ||
+          code === 'INVALID_SCHEDULE_TIME'
             ? 400
             : 500;
         return reply.status(status).send({
           error: code,
-          message: err instanceof Error ? err.message : 'No se pudo completar el envío masivo',
+          message: humanizeEmailError(code),
         });
       }
     },
@@ -414,6 +467,176 @@ export async function emailsRoutes(app: FastifyInstance) {
   );
 
   server.post(
+    '/send/group',
+    {
+      preHandler: [app.authenticateApiToken],
+      schema: {
+        body: z.object({
+          groupId: z.string().uuid(),
+          template: z.string().optional(),
+          subject: z.string().optional(),
+          html: z.string().optional(),
+          data: z.record(z.unknown()).optional(),
+          scheduledAt: z.string().datetime().optional(),
+          campaignName: z.string().max(150).optional(),
+        }),
+        tags: ['Emails'],
+      },
+    },
+    async (request, reply) => {
+      if (!request.projectId) {
+        return reply.status(401).send({ error: 'No autorizado' });
+      }
+      try {
+        if (request.body.scheduledAt) {
+          await assertCanSendForProject(request.projectId, { schedule: true, bulk: true });
+          const result = await enqueueGroupCampaign({
+            projectId: request.projectId,
+            groupId: request.body.groupId,
+            template: request.body.template,
+            subject: request.body.subject,
+            html: request.body.html,
+            data: request.body.data,
+            scheduledAt: request.body.scheduledAt,
+            campaignName: request.body.campaignName,
+          });
+          return reply.status(201).send({
+            success: true,
+            scheduled: true,
+            campaignId: result.campaign.id,
+            total: result.total,
+          });
+        }
+        const members = await contactsRepo.listByGroup(request.body.groupId);
+        await assertCanSendForProject(request.projectId, {
+          bulk: true,
+          count: Math.max(members.length, 1),
+        });
+        const result = await sendToGroup({
+          projectId: request.projectId,
+          groupId: request.body.groupId,
+          template: request.body.template,
+          subject: request.body.subject,
+          html: request.body.html,
+          data: request.body.data,
+          campaignName: request.body.campaignName,
+        });
+        return { success: true, scheduled: false, ...result };
+      } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
+        const code = err instanceof Error ? err.message : 'GROUP_SEND_FAILED';
+        return reply.status(400).send({
+          error: code,
+          message: humanizeEmailError(code),
+        });
+      }
+    },
+  );
+
+  server.post(
+    '/:projectId/group',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        params: z.object({ projectId: z.string().uuid() }),
+        body: z.object({
+          groupId: z.string().uuid(),
+          template: z.string().optional(),
+          subject: z.string().optional(),
+          html: z.string().optional(),
+          data: z.record(z.unknown()).optional(),
+          scheduledAt: z.string().datetime().optional(),
+          campaignName: z.string().max(150).optional(),
+        }),
+        tags: ['Emails'],
+      },
+    },
+    async (request, reply) => {
+      const project = await projectsRepo.findProjectById(request.params.projectId);
+      if (!project || project.user_id !== request.userId) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+      try {
+        if (request.body.scheduledAt) {
+          await assertCanSendForProject(project.id, { schedule: true, bulk: true });
+          const result = await enqueueGroupCampaign({
+            projectId: project.id,
+            ...request.body,
+            scheduledAt: request.body.scheduledAt,
+          });
+          return reply.status(201).send({
+            success: true,
+            scheduled: true,
+            campaignId: result.campaign.id,
+            total: result.total,
+          });
+        }
+        const members = await contactsRepo.listByGroup(request.body.groupId);
+        await assertCanSendForProject(project.id, {
+          bulk: true,
+          count: Math.max(members.length, 1),
+        });
+        const result = await sendToGroup({
+          projectId: project.id,
+          groupId: request.body.groupId,
+          template: request.body.template,
+          subject: request.body.subject,
+          html: request.body.html,
+          data: request.body.data,
+          campaignName: request.body.campaignName,
+        });
+        return { success: true, ...result };
+      } catch (err) {
+        if (replyPlanLimitError(reply, err)) return;
+        const code = err instanceof Error ? err.message : 'GROUP_SEND_FAILED';
+        return reply.status(400).send({ error: code, message: humanizeEmailError(code) });
+      }
+    },
+  );
+
+  server.get(
+    '/:projectId/campaigns',
+    {
+      preHandler: [app.authenticate],
+      schema: { params: z.object({ projectId: z.string().uuid() }), tags: ['Campaigns'] },
+    },
+    async (request, reply) => {
+      const project = await projectsRepo.findProjectById(request.params.projectId);
+      if (!project || project.user_id !== request.userId) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+      const campaigns = await campaignsRepo.listByProject(project.id);
+      return { campaigns };
+    },
+  );
+
+  server.post(
+    '/:projectId/campaigns/:campaignId/cancel',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        params: z.object({
+          projectId: z.string().uuid(),
+          campaignId: z.string().uuid(),
+        }),
+        tags: ['Campaigns'],
+      },
+    },
+    async (request, reply) => {
+      const project = await projectsRepo.findProjectById(request.params.projectId);
+      if (!project || project.user_id !== request.userId) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+      const cancelled = await campaignsRepo.cancelPending(request.params.campaignId);
+      if (!cancelled) {
+        return reply.status(400).send({ error: 'Cannot cancel' });
+      }
+      const n = await scheduledEmailsRepo.cancelByCampaign(request.params.campaignId);
+      return { campaign: cancelled, cancelledJobs: n };
+    },
+  );
+
+  server.post(
     '/:projectId/test',
     {
       preHandler: [app.authenticate],
@@ -457,6 +680,7 @@ export async function emailsRoutes(app: FastifyInstance) {
         return reply.status(status).send({
           error: 'SEND_FAILED',
           message,
+          userMessage: humanizeEmailError(message),
         });
       }
     },

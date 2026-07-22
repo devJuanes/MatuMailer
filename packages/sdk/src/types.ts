@@ -19,6 +19,8 @@ export interface BulkSendPayload {
   subject?: string;
   recipients: BulkRecipient[];
   delayMs?: number;
+  scheduledAt?: string;
+  campaignName?: string;
 }
 
 export interface BulkSendFromJsonPayload {
@@ -38,7 +40,29 @@ export interface BulkSendResult {
   failed: number;
   emailField?: string;
   skipped?: number;
+  scheduled?: boolean;
+  campaignId?: string;
   results: Array<{ email: string; id?: string; status: string; error?: string }>;
+}
+
+export interface GroupSendPayload {
+  groupId: string;
+  template?: string;
+  subject?: string;
+  html?: string;
+  data?: Record<string, unknown>;
+  scheduledAt?: string;
+  campaignName?: string;
+}
+
+export interface GroupSendResult {
+  success: boolean;
+  scheduled?: boolean;
+  campaignId?: string;
+  total: number;
+  sent?: number;
+  failed?: number;
+  results?: Array<{ email: string; id?: string; status: string; error?: string }>;
 }
 
 export interface MatuMailerConfig {

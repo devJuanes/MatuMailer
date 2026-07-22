@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Bell, BookOpen, Crown, LogOut, Menu } from 'lucide-react';
 import { AppLogo } from '@/components/brand/AppLogo';
 import { clearToken } from '@/lib/api';
+import { signOut } from '@/lib/auth-matudb';
 import { usePlan } from '@/providers/plan-provider';
 import { Button } from '@/components/ui/button';
 
@@ -17,8 +18,10 @@ export function TopNav({ onMenuClick }: TopNavProps) {
   const { isPremium, loading } = usePlan();
 
   function logout() {
-    clearToken();
-    router.push('/login');
+    void signOut().finally(() => {
+      clearToken();
+      router.push('/login');
+    });
   }
 
   return (

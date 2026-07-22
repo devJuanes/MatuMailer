@@ -13,6 +13,9 @@ import { smtpRoutes } from './routes/smtp.routes.js';
 import { templatesRoutes } from './routes/templates.routes.js';
 import { emailsRoutes } from './routes/emails.routes.js';
 import { billingRoutes } from './routes/billing.routes.js';
+import { contactsRoutes } from './routes/contacts.routes.js';
+import { brandingRoutes } from './routes/branding.routes.js';
+import { trackingRoutes } from './routes/tracking.routes.js';
 import { startScheduleWorker } from './services/schedule.service.js';
 import { getMatuOps, reportMatuOpsError, startMatuOps, stopMatuOps } from './lib/matuops.js';
 
@@ -75,6 +78,9 @@ async function buildServer() {
   await app.register(templatesRoutes, { prefix: '/api/templates' });
   await app.register(emailsRoutes, { prefix: '/api/emails' });
   await app.register(billingRoutes, { prefix: '/api/billing' });
+  await app.register(contactsRoutes, { prefix: '/api/contacts' });
+  await app.register(brandingRoutes, { prefix: '/api/branding' });
+  await app.register(trackingRoutes);
 
   app.setErrorHandler(async (error, request, reply) => {
     const err = error instanceof Error ? error : new Error(String(error));

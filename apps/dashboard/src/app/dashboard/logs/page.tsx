@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/layout/page-header';
 import { useProjects } from '@/hooks/use-project';
-import { api } from '@/lib/api';
+import { listEmailLogs } from '@/lib/db/email-logs';
 import { cn } from '@/lib/utils';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface EmailLog {
   id: string;
@@ -13,6 +14,8 @@ interface EmailLog {
   subject: string;
   template_slug: string | null;
   status: string;
+  error_message?: string | null;
+  user_message?: string | null;
   created_at: string;
 }
 
@@ -33,38 +36,47 @@ const statusStyles: Record<string, string> = {
 export default function LogsPage() {
   const { activeId } = useProjects();
   const [logs, setLogs] = useState<EmailLog[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeId) return;
-    api<{ logs: EmailLog[] }>(`/api/emails/${activeId}/logs?limit=50`).then((r) => setLogs(r.logs));
+    listEmailLogs(activeId, { limit: 50 }).then(setLogs);
   }, [activeId]);
 
   return (
-    <div>
-      <PageHeader title="Registro de correos" description="Historial de envíos de tu proyecto" />
+    <div className="space-y-6">
+      <PageHeader
+        title="Registro de correos"
+        description="Historial con mensajes claros cuando algo falla"
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Envíos recientes</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/60 text-left text-muted-foreground">
-                <th className="pb-4 pr-4 font-medium">Destinatario</th>
-                <th className="pb-4 pr-4 font-medium">Asunto</th>
-                <th className="pb-4 pr-4 font-medium">Plantilla</th>
-                <th className="pb-4 pr-4 font-medium">Estado</th>
-                <th className="pb-4 font-medium">Fecha</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log) => (
-                <tr key={log.id} className="border-b border-border/40">
-                  <td className="py-4 pr-4 font-mono text-xs text-charcoal">{log.to_email}</td>
-                  <td className="max-w-[200px] truncate py-4 pr-4">{log.subject}</td>
-                  <td className="py-4 pr-4 text-muted-foreground">{log.template_slug ?? '—'}</td>
-                  <td className="py-4 pr-4">
+      <div className="space-y-3">
+        {logs.map((log) => {
+          const human =
+            log.user_message ||
+            (log.status === 'failed'
+              ? 'No se pudo enviar este correo.'
+              : log.status === 'sent'
+                ? 'Entregado al servidor SMTP.'
+                : null);
+          const open = openId === log.id;
+          return (
+            <Card key={log.id} className={cn(log.status === 'failed' && 'border-red-200')}>
+              <CardContent className="p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-charcoal">
+                      {log.status === 'failed'
+                        ? `No se envió a ${log.to_email}${human ? ` porque ${human.charAt(0).toLowerCase()}${human.slice(1)}` : '.'}`
+                        : `${statusLabels[log.status] ?? log.status}: ${log.to_email}`}
+                    </p>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">{log.subject}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {log.template_slug ? `Plantilla /${log.template_slug} · ` : ''}
+                      {new Date(log.created_at).toLocaleString('es')}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <span
                       className={cn(
                         'rounded-full px-3 py-1 text-xs font-semibold',
@@ -73,23 +85,45 @@ export default function LogsPage() {
                     >
                       {statusLabels[log.status] ?? log.status}
                     </span>
-                  </td>
-                  <td className="py-4 text-muted-foreground">
-                    {new Date(log.created_at).toLocaleString('es')}
-                  </td>
-                </tr>
-              ))}
-              {logs.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-12 text-center text-muted-foreground">
-                    Aún no hay correos enviados
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+                    {(log.error_message || log.user_message) && (
+                      <button
+                        type="button"
+                        className="rounded-full p-1 hover:bg-charcoal/5"
+                        onClick={() => setOpenId(open ? null : log.id)}
+                        aria-label="Detalle técnico"
+                      >
+                        {open ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {open && (
+                  <div className="mt-4 rounded-xl bg-charcoal/5 p-3 text-xs font-mono text-muted-foreground whitespace-pre-wrap">
+                    {log.user_message && (
+                      <p className="mb-2 font-sans text-sm text-charcoal">{log.user_message}</p>
+                    )}
+                    {log.error_message || 'Sin detalle técnico adicional'}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+        {logs.length === 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Envíos recientes</CardTitle>
+            </CardHeader>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              Aún no hay correos enviados
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

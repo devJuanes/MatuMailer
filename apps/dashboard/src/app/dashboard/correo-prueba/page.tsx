@@ -26,6 +26,7 @@ interface Template {
   id: string;
   slug: string;
   name: string;
+  variables?: string[];
 }
 
 type SendMode = 'template' | 'custom';
@@ -248,6 +249,15 @@ export default function CorreoPruebaPage() {
                     value={dataJson}
                     onChange={(e) => setDataJson(e.target.value)}
                   />
+                  {templates.find((t) => t.slug === template)?.variables?.length ? (
+                    <p className="text-xs text-muted-foreground">
+                      Campos de la plantilla:{' '}
+                      {templates
+                        .find((t) => t.slug === template)!
+                        .variables!.map((v) => `{{${v}}}`)
+                        .join(', ')}
+                    </p>
+                  ) : null}
                 </div>
               </>
             ) : (

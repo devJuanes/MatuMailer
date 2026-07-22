@@ -14,8 +14,15 @@ HOST = os.environ.get("DEPLOY_HOST", "13.140.160.248")
 USER = os.environ.get("DEPLOY_USER", "root")
 PASSWORD = os.environ.get("SSH_PASS", "")
 APP_DIR = "/root/apps/MatuMailer"
+MATUOPS_DIR = "/root/apps/Matuops"
 SITE_URL = "https://matumailer.matubyte.com"
 PAY_API_KEY = "pk_matumailer_prod_cambiar"
+MATUOPS_APP_TOKEN = os.environ.get(
+    "MATUOPS_APP_TOKEN",
+    "mapp_1fee879ae44149e63952ed8fd36bcdd352624072558b8740",
+)
+MATUOPS_ENDPOINT = os.environ.get("MATUOPS_ENDPOINT", "https://ops.matubyte.com")
+APP_VERSION = os.environ.get("APP_VERSION", "1.0.0")
 
 if not PASSWORD:
     print("ERROR: define SSH_PASS", file=sys.stderr)
@@ -59,6 +66,18 @@ def ensure_env(client):
             client,
             f"""grep -q '^PAYMATUBYTE_API_KEY=' {APP_DIR}/.env && sed -i 's|^PAYMATUBYTE_API_KEY=.*|PAYMATUBYTE_API_KEY={PAY_API_KEY}|' {APP_DIR}/.env || echo 'PAYMATUBYTE_API_KEY={PAY_API_KEY}' >> {APP_DIR}/.env""",
         )
+        run(
+            client,
+            f"""grep -q '^MATUOPS_APP_TOKEN=' {APP_DIR}/.env && sed -i 's|^MATUOPS_APP_TOKEN=.*|MATUOPS_APP_TOKEN={MATUOPS_APP_TOKEN}|' {APP_DIR}/.env || echo 'MATUOPS_APP_TOKEN={MATUOPS_APP_TOKEN}' >> {APP_DIR}/.env""",
+        )
+        run(
+            client,
+            f"""grep -q '^MATUOPS_ENDPOINT=' {APP_DIR}/.env && sed -i 's|^MATUOPS_ENDPOINT=.*|MATUOPS_ENDPOINT={MATUOPS_ENDPOINT}|' {APP_DIR}/.env || echo 'MATUOPS_ENDPOINT={MATUOPS_ENDPOINT}' >> {APP_DIR}/.env""",
+        )
+        run(
+            client,
+            f"""grep -q '^APP_VERSION=' {APP_DIR}/.env && sed -i 's|^APP_VERSION=.*|APP_VERSION={APP_VERSION}|' {APP_DIR}/.env || echo 'APP_VERSION={APP_VERSION}' >> {APP_DIR}/.env""",
+        )
         return
 
     jwt = secrets.token_hex(32)
@@ -81,6 +100,10 @@ PAYMATUBYTE_API_KEY={PAY_API_KEY}
 RATE_LIMIT_MAX=100
 RATE_LIMIT_WINDOW_MS=60000
 SCHEDULER_INTERVAL_MS=30000
+
+MATUOPS_APP_TOKEN={MATUOPS_APP_TOKEN}
+MATUOPS_ENDPOINT={MATUOPS_ENDPOINT}
+APP_VERSION={APP_VERSION}
 """
     sftp = client.open_sftp()
     with sftp.file(f"{APP_DIR}/.env", "w") as f:
@@ -89,22 +112,42 @@ SCHEDULER_INTERVAL_MS=30000
     print("✓ .env creado en servidor")
 
 
+def ensure_matuops_sdk(client):
+    """Enlace simbólico matuops (minúsculas) y build del SDK para file:../matuops."""
+    run(client, f"test -d {MATUOPS_DIR}/packages/app-sdk || (echo 'MatuOps no encontrado en {MATUOPS_DIR}' && exit 1)")
+    run(client, "ln -sfn /root/apps/Matuops /root/apps/matuops")
+    run(
+        client,
+        f"cd {MATUOPS_DIR}/packages/app-sdk && npm install && npm run build",
+        timeout=300,
+    )
+
+
 def main():
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     client.connect(HOST, username=USER, password=PASSWORD, timeout=30)
 
-    run(client, f"cd {APP_DIR} && git pull origin main")
+    run(client, f"cd {APP_DIR} && git fetch origin main && git reset --hard origin/main")
+    ensure_matuops_sdk(client)
     run(client, f"cd {APP_DIR} && npm install")
 
     ensure_env(client)
 
     run(
         client,
-        f"echo 'NEXT_PUBLIC_API_URL={SITE_URL}' > {APP_DIR}/apps/dashboard/.env.production",
+        f"""cat > {APP_DIR}/apps/dashboard/.env.production << 'EOF'
+NEXT_PUBLIC_API_URL={SITE_URL}
+NEXT_PUBLIC_APP_URL={SITE_URL}
+EOF""",
     )
 
     run(client, f"cd {APP_DIR} && npm run db:migrate:subscriptions --workspace=@matumailer/database || true")
+    run(
+        client,
+        f"cd {APP_DIR} && node packages/database/scripts/apply-messaging-upgrade.mjs || true",
+        timeout=120,
+    )
     run(client, f"cd {APP_DIR} && npm run build", timeout=1200)
 
     run(client, f"cd {APP_DIR} && pm2 delete matumailer-api matumailer-dashboard 2>/dev/null || true")
@@ -149,7 +192,7 @@ NGINXEOF""",
     run(client, "nginx -t")
     run(client, "systemctl reload nginx")
 
-    run(client, "sleep 3 && curl -sS -m 10 http://127.0.0.1:4001/health")
+    run(client, "sleep 8 && curl -sf -m 15 http://127.0.0.1:4001/health")
     run(client, "curl -sS -m 10 -I http://127.0.0.1:3015 | head -5")
     run(client, f"curl -sS -m 15 {SITE_URL}/health || curl -sS -m 15 http://matumailer.matubyte.com/health || true")
 

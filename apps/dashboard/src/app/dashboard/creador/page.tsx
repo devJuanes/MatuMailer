@@ -10,6 +10,7 @@ import { TemplateBuilder } from '@/components/template-builder/template-builder'
 import { useProjects } from '@/hooks/use-project';
 import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
+import { createTemplate, listTemplates, updateTemplate } from '@/lib/db/templates';
 import { canCreateTemplate, FREE_LIMITS } from '@/lib/plan-limits-ui';
 import { PreloadBlock } from '@/lib/preload';
 import type { EmailBlock } from '@/lib/email-builder';
@@ -45,10 +46,17 @@ function CreadorInner() {
       setInitial(null);
       return;
     }
-    api<{ templates: TemplateRow[] }>(`/api/templates/${activeId}`)
-      .then((r) => {
-        const t = r.templates.find((x) => x.id === editId);
-        setInitial(t ?? null);
+    listTemplates(activeId)
+      .then((templates) => {
+        const t = templates.find((x) => x.id === editId);
+        setInitial(
+          t
+            ? {
+                ...t,
+                builder_data: (t.builder_data as EmailBlock[] | null) ?? null,
+              }
+            : null,
+        );
         setIsNew(!t);
       })
       .finally(() => setLoading(false));
@@ -109,32 +117,26 @@ function CreadorInner() {
       }
       onSave={async (payload) => {
         if (initial?.id) {
-          await api(`/api/templates/${activeId}/${initial.id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({
-              name: payload.name,
-              subject: payload.subject,
-              htmlContent: payload.htmlContent,
-              builderData: payload.builderData,
-              variables: payload.variables,
-            }),
+          await updateTemplate(initial.id, {
+            name: payload.name,
+            subject: payload.subject,
+            html_content: payload.htmlContent,
+            builder_data: payload.builderData,
+            variables: payload.variables,
           });
         } else {
-          const res = await api<{ template: TemplateRow }>(`/api/templates/${activeId}`, {
-            method: 'POST',
-            body: JSON.stringify({
-              slug: payload.slug,
-              name: payload.name,
-              subject: payload.subject,
-              htmlContent: payload.htmlContent,
-              builderData: payload.builderData,
-              variables: payload.variables,
-            }),
+          const template = await createTemplate(activeId, {
+            slug: payload.slug,
+            name: payload.name,
+            subject: payload.subject,
+            html_content: payload.htmlContent,
+            builder_data: payload.builderData,
+            variables: payload.variables,
           });
-          setInitial(res.template);
+          setInitial(template as TemplateRow);
           setIsNew(false);
           await refreshPlan();
-          window.history.replaceState(null, '', `/dashboard/creador?id=${res.template.id}`);
+          window.history.replaceState(null, '', `/dashboard/creador?id=${template.id}`);
         }
       }}
       onPreview={async (html, subject) => {

@@ -1,6 +1,6 @@
 -- Cola de envíos programados
 CREATE TABLE IF NOT EXISTS scheduled_emails (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   to_email VARCHAR(255) NOT NULL,
   subject VARCHAR(200) NOT NULL,

@@ -11,6 +11,7 @@ import { UpgradeButton } from '@/components/billing/UpgradeButton';
 import { useProjects } from '@/hooks/use-project';
 import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
+import { getSmtpConfigPublic } from '@/lib/db/setup';
 import { smtpLimitState, limitMessage } from '@/lib/plan-limits-ui';
 import { Server, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -61,32 +62,21 @@ export default function SmtpPage() {
 
   useEffect(() => {
     if (!activeId) return;
-    api<{
-      config: {
-        provider: string;
-        host: string;
-        port: number;
-        secure: boolean;
-        username: string;
-        from_email: string;
-        from_name: string | null;
-        is_verified: boolean;
-      } | null;
-    }>(`/api/smtp/${activeId}`)
-      .then((r) => {
-        if (r.config) {
+    getSmtpConfigPublic(activeId)
+      .then((config) => {
+        if (config) {
           setHasExistingConfig(true);
           setForm({
-            provider: r.config.provider,
-            host: r.config.host,
-            port: r.config.port,
-            secure: r.config.secure,
-            username: r.config.username,
+            provider: config.provider,
+            host: config.host,
+            port: config.port,
+            secure: config.secure,
+            username: config.username,
             password: '',
-            fromEmail: r.config.from_email,
-            fromName: r.config.from_name ?? '',
+            fromEmail: config.from_email,
+            fromName: config.from_name ?? '',
           });
-          setVerified(r.config.is_verified);
+          setVerified(config.is_verified);
           loadDeliverability();
         } else {
           setHasExistingConfig(false);
@@ -274,13 +264,45 @@ export default function SmtpPage() {
               <select
                 className="input-crextio w-full"
                 value={form.provider}
-                onChange={(e) => setForm({ ...form, provider: e.target.value })}
+                onChange={(e) => {
+                  const provider = e.target.value;
+                  const preset = (
+                    [
+                      { provider: 'gmail', host: 'smtp.gmail.com', port: 587, secure: false },
+                      { provider: 'outlook', host: 'smtp.office365.com', port: 587, secure: false },
+                      { provider: 'zoho', host: 'smtp.zoho.com', port: 587, secure: false },
+                    ] as const
+                  ).find((p) => p.provider === provider);
+                  if (preset) {
+                    setForm((f) => ({
+                      ...f,
+                      provider,
+                      host: preset.host,
+                      port: preset.port,
+                      secure: preset.secure,
+                    }));
+                    setMessage(
+                      provider === 'gmail'
+                        ? 'Gmail: usa una contraseña de aplicación (no tu clave normal).'
+                        : provider === 'outlook'
+                          ? 'Outlook: host y puerto listos. Usa tu correo y contraseña o app password.'
+                          : 'Zoho: host y puerto listos. Usa tu cuenta Zoho Mail.',
+                    );
+                  } else {
+                    setForm((f) => ({ ...f, provider }));
+                  }
+                }}
               >
                 <option value="gmail">Gmail</option>
                 <option value="outlook">Outlook</option>
                 <option value="zoho">Zoho</option>
                 <option value="custom">Personalizado</option>
               </select>
+              {form.provider !== 'custom' && (
+                <p className="text-xs text-muted-foreground">
+                  Host y puerto se rellenaron automáticamente. Solo completa usuario y contraseña.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

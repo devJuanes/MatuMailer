@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/layout/page-header';
 import { useProjects } from '@/hooks/use-project';
 import { api } from '@/lib/api';
+import { cancelScheduledEmail, listScheduledEmails } from '@/lib/db/scheduled-emails';
+import { listTemplates } from '@/lib/db/templates';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,6 +29,18 @@ interface ScheduledRow {
   status: string;
   error_message: string | null;
   created_at: string;
+  campaign_id?: string | null;
+}
+
+interface CampaignRow {
+  id: string;
+  name: string;
+  status: string;
+  template_slug: string | null;
+  total_count: number;
+  sent_count: number;
+  failed_count: number;
+  scheduled_at: string | null;
 }
 
 type SendMode = 'template' | 'custom';
@@ -37,6 +51,7 @@ const statusLabel: Record<string, string> = {
   sent: 'Enviado',
   failed: 'Fallido',
   cancelled: 'Cancelado',
+  completed: 'Completada',
 };
 
 function toLocalDatetimeValue(date: Date): string {
@@ -47,6 +62,7 @@ function toLocalDatetimeValue(date: Date): string {
 export default function ProgramadosPage() {
   const { activeId } = useProjects();
   const [scheduled, setScheduled] = useState<ScheduledRow[]>([]);
+  const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [mode, setMode] = useState<SendMode>('template');
   const [to, setTo] = useState('');
@@ -63,18 +79,30 @@ export default function ProgramadosPage() {
 
   const load = useCallback(async () => {
     if (!activeId) return;
-    const res = await api<{ scheduled: ScheduledRow[] }>(`/api/emails/${activeId}/scheduled`);
-    setScheduled(res.scheduled);
+    const [scheduled, campaignsRes] = await Promise.all([
+      listScheduledEmails(activeId),
+      api<{ campaigns: CampaignRow[] }>(`/api/emails/${activeId}/campaigns`).catch(() => ({
+        campaigns: [] as CampaignRow[],
+      })),
+    ]);
+    setScheduled(scheduled);
+    setCampaigns(campaignsRes.campaigns);
   }, [activeId]);
 
   useEffect(() => {
     if (!activeId) return;
     load();
-    api<{ templates: Template[] }>(`/api/templates/${activeId}`).then((r) => {
-      setTemplates(r.templates);
-      if (r.templates[0]) setTemplate(r.templates[0].slug);
+    listTemplates(activeId).then((templates) => {
+      setTemplates(templates);
+      if (templates[0]) setTemplate(templates[0].slug);
     });
   }, [activeId, load]);
+
+  async function cancelCampaign(id: string) {
+    if (!activeId) return;
+    await api(`/api/emails/${activeId}/campaigns/${id}/cancel`, { method: 'POST' });
+    await load();
+  }
 
   async function scheduleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -115,7 +143,7 @@ export default function ProgramadosPage() {
 
   async function cancel(id: string) {
     if (!activeId) return;
-    await api(`/api/emails/${activeId}/scheduled/${id}`, { method: 'DELETE' });
+    await cancelScheduledEmail(id);
     await load();
   }
 
@@ -132,8 +160,60 @@ export default function ProgramadosPage() {
       <div className="space-y-6">
         <PageHeader
           title="Envíos programados"
-          description="Cola con fecha y hora — el servidor procesa los pendientes automáticamente"
+          description="Cola durable y campañas masivas — progreso y cancelación"
         />
+
+        {campaigns.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Campañas</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {campaigns.map((c) => {
+                const done = c.sent_count + c.failed_count;
+                const pct = c.total_count ? Math.round((done / c.total_count) * 100) : 0;
+                return (
+                  <div
+                    key={c.id}
+                    className="rounded-2xl border border-border/50 bg-white/60 p-4 text-sm"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-charcoal">{c.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {c.template_slug ? `/${c.template_slug} · ` : ''}
+                          {c.sent_count} enviados · {c.failed_count} fallidos · {c.total_count}{' '}
+                          total
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-gold/20 px-2 py-0.5 text-xs font-medium">
+                        {statusLabel[c.status] ?? c.status}
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-charcoal/10">
+                      <div
+                        className="h-full rounded-full bg-gold transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    {['pending', 'processing'].includes(c.status) && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="mt-3"
+                        onClick={() => cancelCampaign(c.id)}
+                      >
+                        <Trash2 className="mr-1 h-3 w-3" />
+                        Cancelar pendientes
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-5 lg:grid-cols-2 max-w-6xl">
           <Card>

@@ -2,6 +2,8 @@ import type {
   BulkSendFromJsonPayload,
   BulkSendPayload,
   BulkSendResult,
+  GroupSendPayload,
+  GroupSendResult,
   MatuMailerConfig,
   SendEmailPayload,
 } from './types.js';
@@ -50,6 +52,11 @@ export class MatuMailer {
   /** Envío masivo desde JSON de usuarios (objeto o array). */
   async sendBulkFromJson(payload: BulkSendFromJsonPayload): Promise<BulkSendResult> {
     return this.request('/api/emails/send/bulk-from-json', payload);
+  }
+
+  /** Envío a un grupo de contactos (inmediato o programado). */
+  async sendToGroup(payload: GroupSendPayload): Promise<GroupSendResult> {
+    return this.request('/api/emails/send/group', payload);
   }
 
   detectSmtp(email: string) {

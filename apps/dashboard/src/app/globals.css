@@ -73,4 +73,119 @@
     background-size: 48px 48px;
     mask-image: linear-gradient(to bottom, black, transparent 85%);
   }
+
+  .landing-hero-glow {
+    background:
+      radial-gradient(ellipse 70% 55% at 15% 20%, hsl(46 100% 64% / 0.35), transparent 55%),
+      radial-gradient(ellipse 55% 45% at 90% 10%, hsl(35 90% 70% / 0.22), transparent 50%),
+      radial-gradient(ellipse 50% 40% at 70% 80%, hsl(46 80% 55% / 0.12), transparent 60%);
+  }
+
+  .landing-fade-up {
+    animation: landing-fade-up 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .landing-fade-up-delay-1 {
+    animation-delay: 0.12s;
+  }
+
+  .landing-fade-up-delay-2 {
+    animation-delay: 0.24s;
+  }
+
+  .landing-float {
+    animation: landing-float 7s ease-in-out infinite;
+  }
+
+  .landing-float-slow {
+    animation: landing-float-slow 10s ease-in-out infinite;
+  }
+
+  .landing-shimmer {
+    background-size: 200% 100%;
+    animation: landing-shimmer 3.5s linear infinite;
+  }
+
+  .landing-marquee-track {
+    animation: landing-marquee 32s linear infinite;
+  }
+
+  .landing-pulse-ring {
+    animation: landing-pulse-ring 2.8s ease-out infinite;
+  }
+}
+
+@keyframes landing-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes landing-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(2deg);
+  }
+}
+
+@keyframes landing-float-slow {
+  0%,
+  100% {
+    transform: translateY(0) rotate(3deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(-1deg);
+  }
+}
+
+@keyframes landing-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes landing-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes landing-pulse-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-fade-up,
+  .landing-float,
+  .landing-float-slow,
+  .landing-shimmer,
+  .landing-marquee-track,
+  .landing-pulse-ring {
+    animation: none !important;
+  }
 }

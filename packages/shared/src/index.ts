@@ -6,3 +6,4 @@ export * from './smtp-presets';
 export * from './smtp-auth';
 export * from './deliverability';
 export * from './recipients';
+export * from './system-templates';

@@ -21,3 +21,8 @@ export * as scheduledEmailsRepo from './repositories/scheduled-emails';
 export * as subscriptionsRepo from './repositories/subscriptions';
 export * as pendingSignupsRepo from './repositories/pending-signups';
 export * as planUsageRepo from './repositories/plan-usage';
+export * as contactsRepo from './repositories/contacts';
+export * as contactGroupsRepo from './repositories/contact-groups';
+export * as brandingRepo from './repositories/branding';
+export * as campaignsRepo from './repositories/campaigns';
+export * as emailEventsRepo from './repositories/email-events';

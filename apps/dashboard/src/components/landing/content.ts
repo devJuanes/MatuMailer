@@ -20,7 +20,7 @@ export const LANDING_FEATURES = [
   {
     icon: Mail,
     title: 'Plantillas dinámicas',
-    desc: 'Crea correos con variables {{nombre}}, {{enlace}} y un editor visual. Reutiliza plantillas en todos tus proyectos.',
+    desc: 'Crea correos con variables {{nombre}}, {{enlace}} y un editor visual. Estándar y personalizadas por proyecto.',
   },
   {
     icon: Code2,
@@ -28,21 +28,36 @@ export const LANDING_FEATURES = [
     desc: 'Integra en minutos con npm install matumailer. También disponible vía HTTP para cualquier stack.',
   },
   {
+    icon: Users,
+    title: 'Contactos y grupos',
+    desc: 'Agenda destinatarios, arma segmentos y envía campañas a un grupo completo con una plantilla.',
+  },
+  {
     icon: Send,
     title: 'Envío masivo',
-    desc: 'Lanza campañas a listas de destinatarios con control de entrega. Disponible en plan Premium.',
+    desc: 'Lanza campañas a listas o grupos con control de entrega y cola durable. Disponible en Premium.',
     premium: true,
   },
   {
     icon: CalendarClock,
     title: 'Correos programados',
-    desc: 'Agenda envíos para el momento exacto: recordatorios, onboarding diferido o newsletters.',
+    desc: 'Agenda envíos y campañas: el worker procesa la cola aunque reinicies el dashboard.',
     premium: true,
   },
   {
     icon: BarChart3,
-    title: 'Analíticas de entrega',
-    desc: 'Consulta cuántos correos se enviaron, entregaron o fallaron. Logs detallados por proyecto.',
+    title: 'Analíticas y tracking',
+    desc: 'Aperturas, clics y logs con mensajes claros en español cuando algo falla.',
+  },
+  {
+    icon: Sparkles,
+    title: 'Brand kit',
+    desc: 'Logo, color, header y footer globales que se aplican al renderizar cada plantilla.',
+  },
+  {
+    icon: Shield,
+    title: 'Credenciales seguras',
+    desc: 'SMTP cifrado por proyecto, tokens de API y cuotas por plan para no sorpresas.',
   },
 ] as const;
 

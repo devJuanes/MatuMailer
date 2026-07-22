@@ -42,13 +42,8 @@ export default function RegisterPaymentResultClient() {
           }
           if (draft) {
             try {
-              const { api, setToken } = await import('@/lib/api');
-              const login = await api<{ token: string }>('/api/auth/login', {
-                method: 'POST',
-                body: JSON.stringify({ email: draft.email, password: draft.password }),
-                token: null,
-              });
-              setToken(login.token);
+              const { signInWithPassword } = await import('@/lib/auth-matudb');
+              await signInWithPassword(draft.email, draft.password);
               setPaid(true);
               router.replace('/dashboard');
               return;

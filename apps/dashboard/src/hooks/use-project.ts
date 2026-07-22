@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { listProjects } from '@/lib/db/projects';
 
 export interface Project {
   id: string;
@@ -16,12 +16,12 @@ export function useProjects() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api<{ projects: Project[] }>('/api/projects')
-      .then((res) => {
-        setProjects(res.projects);
+    listProjects()
+      .then((projects) => {
+        setProjects(projects);
         const saved = localStorage.getItem('matumailer_project_id');
-        const id = saved && res.projects.find((p) => p.id === saved)?.id;
-        setActiveId(id ?? res.projects[0]?.id ?? null);
+        const id = saved && projects.find((p) => p.id === saved)?.id;
+        setActiveId(id ?? projects[0]?.id ?? null);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -34,8 +34,14 @@ export function useProjects() {
 
   const active = projects.find((p) => p.id === activeId) ?? null;
 
-  return { projects, active, activeId, selectProject, loading, refresh: async () => {
-    const res = await api<{ projects: Project[] }>('/api/projects');
-    setProjects(res.projects);
-  }};
+  return {
+    projects,
+    active,
+    activeId,
+    selectProject,
+    loading,
+    refresh: async () => {
+      setProjects(await listProjects());
+    },
+  };
 }

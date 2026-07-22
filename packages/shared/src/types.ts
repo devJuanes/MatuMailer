@@ -1,4 +1,9 @@
-import type { EMAIL_STATUS, SCHEDULED_EMAIL_STATUS, SMTP_PROVIDERS, TEMPLATE_SLUGS } from './constants';
+import type {
+  EMAIL_STATUS,
+  SCHEDULED_EMAIL_STATUS,
+  SMTP_PROVIDERS,
+  TEMPLATE_SLUGS,
+} from './constants';
 
 export type SmtpProvider = (typeof SMTP_PROVIDERS)[number];
 export type TemplateSlug = (typeof TEMPLATE_SLUGS)[number];
@@ -96,8 +101,70 @@ export interface EmailLog {
   template_slug: string | null;
   status: EmailStatus;
   error_message: string | null;
+  user_message?: string | null;
+  campaign_id?: string | null;
+  group_id?: string | null;
+  tracking_token?: string | null;
   metadata: Record<string, unknown>;
   sent_at: string | null;
+  created_at: string;
+}
+
+export interface Contact {
+  id: string;
+  project_id: string;
+  email: string;
+  name: string | null;
+  metadata: Record<string, unknown>;
+  unsubscribed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactGroup {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  member_count?: number;
+}
+
+export interface ProjectBranding {
+  project_id: string;
+  company_name: string | null;
+  logo_url: string | null;
+  primary_color: string;
+  header_html: string | null;
+  footer_html: string | null;
+  tracking_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Campaign {
+  id: string;
+  project_id: string;
+  name: string;
+  template_slug: string | null;
+  group_id: string | null;
+  status: string;
+  scheduled_at: string | null;
+  total_count: number;
+  sent_count: number;
+  failed_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailEvent {
+  id: string;
+  email_log_id: string;
+  project_id: string;
+  type: 'open' | 'click';
+  url: string | null;
+  user_agent: string | null;
   created_at: string;
 }
 
@@ -128,6 +195,7 @@ export interface ScheduledEmail {
   scheduled_at: string;
   status: ScheduledEmailStatus;
   email_log_id: string | null;
+  campaign_id?: string | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;

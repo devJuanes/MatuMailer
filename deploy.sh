@@ -19,6 +19,7 @@ EOF
 echo ">>> migraciones"
 npm run db:migrate:subscriptions --workspace=@matumailer/database || true
 npm run db:migrate:pending-signups --workspace=@matumailer/database || true
+node packages/database/scripts/apply-messaging-upgrade.mjs || true
 
 echo ">>> build"
 npm run build

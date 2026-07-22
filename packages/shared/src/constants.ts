@@ -1,7 +1,7 @@
 export const API_TOKEN_PREFIX = 'mm_live_';
 export const API_TOKEN_PREFIX_TEST = 'mm_test_';
 
-export const TEMPLATE_SLUGS = ['welcome', 'password-recovery', 'notification'] as const;
+export const TEMPLATE_SLUGS = ['welcome', 'password-recovery', 'notification', 'campana'] as const;
 
 export const SMTP_PROVIDERS = ['gmail', 'outlook', 'zoho', 'custom'] as const;
 

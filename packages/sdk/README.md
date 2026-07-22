@@ -72,6 +72,20 @@ Puedes sobrescribir el asunto con el 4º argumento de `sendTemplate` o con `subj
 
 ---
 
+## Envío a grupo
+
+```ts
+await mail.sendToGroup({
+  groupId: 'uuid-del-grupo',
+  template: 'campana',
+  data: { titulo: 'Novedades', mensaje: '…', enlace: 'https://…' },
+});
+```
+
+Con `scheduledAt` se crean N jobs durables en la cola (sobreviven reinicios).
+
+---
+
 ## Envío programado
 
 ```ts
@@ -91,6 +105,9 @@ await mail.send({
 | ----------------------------------------- | ------------------------------------------------------- |
 | `send(payload)`                           | POST `/api/emails/send` — libre, plantilla o programado |
 | `sendTemplate(to, slug, data?, subject?)` | Envío con plantilla                                     |
+| `sendBulk(payload)`                       | POST `/api/emails/send/bulk`                            |
+| `sendBulkFromJson(payload)`               | Bulk desde JSON de usuarios                             |
+| `sendToGroup(payload)`                    | POST `/api/emails/send/group`                           |
 | `detectSmtp(email)`                       | Sugiere preset SMTP (Gmail, Outlook, etc.)              |
 
 ### `SendEmailPayload`

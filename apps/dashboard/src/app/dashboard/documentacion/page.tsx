@@ -9,6 +9,16 @@ const endpoints = [
     path: '/api/emails/send',
     desc: 'Enviar correo (token API). Libre, plantilla o programado.',
   },
+  {
+    method: 'POST',
+    path: '/api/emails/send/bulk',
+    desc: 'Envío masivo por destinatario (opcional scheduledAt → campaña).',
+  },
+  {
+    method: 'POST',
+    path: '/api/emails/send/group',
+    desc: 'Enviar plantilla a un grupo de contactos (inmediato o programado).',
+  },
   { method: 'POST', path: '/api/auth/register', desc: 'Registro MatuDB Auth' },
   { method: 'POST', path: '/api/auth/login', desc: 'Inicio de sesión' },
   { method: 'GET', path: '/api/projects', desc: 'Listar proyectos' },
@@ -18,6 +28,8 @@ const endpoints = [
     path: '/api/templates/:projectId',
     desc: 'Listar plantillas (slug para código)',
   },
+  { method: 'GET', path: '/t/o/:token', desc: 'Pixel de apertura (tracking)' },
+  { method: 'GET', path: '/t/c/:token?u=', desc: 'Redirect de clic trackeado' },
 ];
 
 export default function DocsPage() {
@@ -151,6 +163,42 @@ await mail.send({
   template: 'recordatorio',
   data: { nombre: 'Ana' },
   scheduledAt: '2026-05-25T15:00:00.000Z',
+});`}
+          </pre>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Envío a grupo</CardTitle>
+          <CardDescription>
+            Requiere contactos y grupos en el dashboard. Un correo por miembro.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-sm text-charcoal/80">
+            {`await mail.sendToGroup({
+  groupId: 'uuid-del-grupo',
+  template: 'campana',
+  data: { titulo: 'Novedades', mensaje: 'Hola…', enlace: 'https://…' },
+  // scheduledAt: '2026-05-25T15:00:00.000Z', // opcional → jobs durables
+});`}
+          </pre>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Bulk / masivo</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-sm text-charcoal/80">
+            {`await mail.sendBulk({
+  template: 'campana',
+  recipients: [
+    { email: 'a@x.com', data: { nombre: 'Ana' } },
+    { email: 'b@x.com', data: { nombre: 'Luis' } },
+  ],
 });`}
           </pre>
         </CardContent>

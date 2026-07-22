@@ -39,8 +39,8 @@ function applyEnvFile(content: string): void {
       value = value.slice(1, -1);
     }
 
-    if (!(key in process.env)) {
-      process.env[key] = value;
-    }
+    // El .env del monorepo es la fuente de verdad en desarrollo: siempre gana
+    // sobre variables heredadas del shell (p. ej. MATUDB_* viejas en Windows).
+    process.env[key] = value;
   }
 }

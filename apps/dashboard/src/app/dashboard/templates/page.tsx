@@ -13,6 +13,7 @@ import { TemplateUsageDocs } from '@/components/template-builder/template-usage-
 import { useProjects } from '@/hooks/use-project';
 import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
+import { listTemplates, updateTemplate } from '@/lib/db/templates';
 import { templateLimitState, limitMessage } from '@/lib/plan-limits-ui';
 import { cn } from '@/lib/utils';
 import { Palette, Pencil } from 'lucide-react';
@@ -44,9 +45,9 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     if (!activeId) return;
-    api<{ templates: Template[] }>(`/api/templates/${activeId}`).then((r) => {
-      setTemplates(r.templates);
-      if (r.templates[0]) setSelected(r.templates[0]);
+    listTemplates(activeId).then((templates) => {
+      setTemplates(templates);
+      if (templates[0]) setSelected(templates[0]);
     });
   }, [activeId]);
 
@@ -74,12 +75,9 @@ export default function TemplatesPage() {
 
   async function saveTemplate() {
     if (!activeId || !selected) return;
-    await api(`/api/templates/${activeId}/${selected.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        subject: selected.subject,
-        htmlContent: selected.html_content,
-      }),
+    await updateTemplate(selected.id, {
+      subject: selected.subject,
+      html_content: selected.html_content,
     });
   }
 
@@ -119,29 +117,59 @@ export default function TemplatesPage() {
       <div className="grid gap-5 lg:grid-cols-5">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-lg">Lista</CardTitle>
+            <CardTitle className="text-lg">Plantillas</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {templates.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setSelected(t)}
-                className={cn(
-                  'w-full rounded-2xl border px-4 py-3 text-left text-sm transition-all',
-                  selected?.id === t.id
-                    ? 'border-gold/50 bg-gold/15 shadow-sm'
-                    : 'border-transparent bg-charcoal/5 hover:bg-charcoal/8',
+          <CardContent className="space-y-5">
+            {[
+              { title: 'Estándar', items: templates.filter((t) => t.is_system) },
+              { title: 'Personalizadas', items: templates.filter((t) => !t.is_system) },
+            ].map((section) => (
+              <div key={section.title} className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {section.title}
+                </p>
+                {section.items.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setSelected(t);
+                      setPreviewData(
+                        JSON.stringify(
+                          Object.fromEntries(
+                            (t.variables ?? [])
+                              .slice(0, 4)
+                              .map((v) => [v, v === 'nombre' ? 'Juan' : `ejemplo_${v}`]),
+                          ),
+                          null,
+                          0,
+                        ) || '{"nombre":"Juan"}',
+                      );
+                    }}
+                    className={cn(
+                      'w-full rounded-2xl border px-4 py-3 text-left text-sm transition-all',
+                      selected?.id === t.id
+                        ? 'border-gold/50 bg-gold/15 shadow-sm'
+                        : 'border-transparent bg-charcoal/5 hover:bg-charcoal/8',
+                    )}
+                  >
+                    <span className="font-semibold text-charcoal">{t.name}</span>
+                    <span className="ml-2 text-muted-foreground">/{t.slug}</span>
+                    {t.variables?.length > 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {t.variables.map((v) => `{{${v}}}`).join(' · ')}
+                      </p>
+                    )}
+                  </button>
+                ))}
+                {!section.items.length && (
+                  <p className="text-sm text-muted-foreground">
+                    {section.title === 'Personalizadas'
+                      ? 'Crea una en el creador visual'
+                      : 'Sin plantillas estándar'}
+                  </p>
                 )}
-              >
-                <span className="font-semibold text-charcoal">{t.name}</span>
-                <span className="ml-2 text-muted-foreground">/{t.slug}</span>
-                {t.is_system && (
-                  <span className="ml-2 rounded-full bg-charcoal/10 px-2 py-0.5 text-xs">
-                    sistema
-                  </span>
-                )}
-              </button>
+              </div>
             ))}
           </CardContent>
         </Card>

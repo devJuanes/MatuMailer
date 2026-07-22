@@ -128,6 +128,8 @@ export const bulkSendEmailSchema = z.object({
   subject: z.string().min(1).max(200).optional(),
   recipients: z.array(bulkRecipientSchema).min(1).max(500),
   delayMs: z.number().int().min(0).max(5000).optional(),
+  scheduledAt: z.string().datetime().optional(),
+  campaignName: z.string().max(150).optional(),
 });
 
 export const bulkSendFromJsonSchema = z.object({

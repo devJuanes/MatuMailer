@@ -57,13 +57,8 @@ export default function RegisterPageClient() {
     setLoading(true);
     try {
       if (tier === 'free') {
-        const { api, setToken } = await import('@/lib/api');
-        const res = await api<{ token: string }>('/api/auth/register', {
-          method: 'POST',
-          body: JSON.stringify({ name, email, password }),
-          token: null,
-        });
-        setToken(res.token);
+        const { signUp } = await import('@/lib/auth-matudb');
+        await signUp(email, password, name);
         router.push('/dashboard');
         return;
       }

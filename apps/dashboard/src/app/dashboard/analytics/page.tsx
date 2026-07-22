@@ -4,28 +4,61 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/layout/page-header';
 import { useProjects } from '@/hooks/use-project';
+import { getEmailStats } from '@/lib/db/email-logs';
 import { api } from '@/lib/api';
 
 export default function AnalyticsPage() {
   const { activeId } = useProjects();
-  const [stats, setStats] = useState({ total: 0, sent: 0, failed: 0, queued: 0 });
+  const [stats, setStats] = useState({
+    total: 0,
+    sent: 0,
+    failed: 0,
+    queued: 0,
+    opens: 0,
+    clicks: 0,
+  });
 
   useEffect(() => {
     if (!activeId) return;
-    api<{ stats: typeof stats }>(`/api/emails/${activeId}/stats`).then((r) => setStats(r.stats));
+    Promise.all([
+      getEmailStats(activeId),
+      api<{ stats: { opens?: number; clicks?: number } }>(`/api/emails/${activeId}/stats`).catch(
+        () => ({ stats: { opens: 0, clicks: 0 } }),
+      ),
+    ]).then(([base, apiStats]) => {
+      setStats({
+        ...base,
+        opens: apiStats.stats?.opens ?? 0,
+        clicks: apiStats.stats?.clicks ?? 0,
+      });
+    });
   }, [activeId]);
 
   const rate = stats.total > 0 ? Math.round((stats.sent / stats.total) * 100) : 0;
+  const openRate = stats.sent > 0 ? Math.round((stats.opens / stats.sent) * 100) : 0;
 
   const bars = [
-    { label: 'Enviados', value: stats.sent, pct: stats.total ? (stats.sent / stats.total) * 100 : 0 },
-    { label: 'Fallidos', value: stats.failed, pct: stats.total ? (stats.failed / stats.total) * 100 : 0 },
-    { label: 'En cola', value: stats.queued, pct: stats.total ? (stats.queued / stats.total) * 100 : 0 },
+    {
+      label: 'Enviados',
+      value: stats.sent,
+      pct: stats.total ? (stats.sent / stats.total) * 100 : 0,
+    },
+    {
+      label: 'Fallidos',
+      value: stats.failed,
+      pct: stats.total ? (stats.failed / stats.total) * 100 : 0,
+    },
+    { label: 'Aperturas', value: stats.opens, pct: Math.min(openRate, 100) },
+    {
+      label: 'Clics',
+      value: stats.clicks,
+      pct: stats.opens ? (stats.clicks / stats.opens) * 100 : 0,
+    },
   ];
 
   return (
     <div>
-      <PageHeader title="Analíticas" description="Métricas de entrega de correos" />
+      <PageHeader title="Analíticas" description="Entrega, aperturas y clics" />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>
@@ -36,7 +69,7 @@ export default function AnalyticsPage() {
             <div className="flex items-end gap-4">
               <span className="text-6xl font-bold text-charcoal">{rate}%</span>
               <p className="pb-2 text-muted-foreground">
-                {stats.sent} de {stats.total} correos
+                {stats.sent} de {stats.total} correos · {openRate}% apertura
               </p>
             </div>
             <div className="mt-6 h-4 overflow-hidden rounded-full bg-charcoal/8">

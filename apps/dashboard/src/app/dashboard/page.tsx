@@ -16,7 +16,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ProjectSelector } from '@/components/layout/project-selector';
 import { useProjects } from '@/hooks/use-project';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { getEmailStats, listEmailLogs } from '@/lib/db/email-logs';
+import { getProjectSetupStatus } from '@/lib/db/setup';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -40,14 +41,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!activeId) return;
-    api<{ stats: typeof stats }>(`/api/emails/${activeId}/stats`)
-      .then((r) => setStats(r.stats))
+    getEmailStats(activeId)
+      .then(setStats)
       .catch(() => {});
-    api<{ setup: SetupStatus }>(`/api/projects/${activeId}/setup`)
-      .then((r) => setSetup(r.setup))
+    getProjectSetupStatus(activeId)
+      .then(setSetup)
       .catch(() => {});
-    api<{ logs: typeof recentLogs }>(`/api/emails/${activeId}/logs?limit=5`)
-      .then((r) => setRecentLogs(r.logs))
+    listEmailLogs(activeId, { limit: 5 })
+      .then(setRecentLogs)
       .catch(() => {});
   }, [activeId]);
 

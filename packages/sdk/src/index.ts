@@ -6,6 +6,8 @@ export type {
   BulkSendFromJsonPayload,
   BulkSendPayload,
   BulkSendResult,
+  GroupSendPayload,
+  GroupSendResult,
   MatuMailerConfig,
   SendEmailPayload,
   SmtpPreset,

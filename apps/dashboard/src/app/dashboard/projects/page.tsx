@@ -11,6 +11,8 @@ import { UpgradeButton } from '@/components/billing/UpgradeButton';
 import { useProjects } from '@/hooks/use-project';
 import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
+import { createProject as createProjectDb } from '@/lib/db/projects';
+import { deleteApiToken, listApiTokens } from '@/lib/db/api-tokens';
 import { projectLimitState, limitMessage } from '@/lib/plan-limits-ui';
 import { PreloadBlock, PreloadGate } from '@/lib/preload';
 import { FolderKanban, Key, Copy, Check, Trash2 } from 'lucide-react';
@@ -45,8 +47,8 @@ export default function ProjectsPage() {
   const [error, setError] = useState('');
 
   const loadTokens = useCallback(async (projectId: string) => {
-    const res = await api<{ tokens: ApiTokenRow[] }>(`/api/projects/${projectId}/tokens`);
-    setTokensByProject((prev) => ({ ...prev, [projectId]: res.tokens }));
+    const tokens = await listApiTokens(projectId);
+    setTokensByProject((prev) => ({ ...prev, [projectId]: tokens }));
   }, []);
 
   useEffect(() => {
@@ -60,9 +62,9 @@ export default function ProjectsPage() {
     if (!canSubmit) return;
     setError('');
     try {
-      await api('/api/projects', {
-        method: 'POST',
-        body: JSON.stringify({ name, slug: slug || name.toLowerCase().replace(/\s+/g, '-') }),
+      await createProjectDb({
+        name,
+        slug: slug || name.toLowerCase().replace(/\s+/g, '-'),
       });
       setName('');
       setSlug('');
@@ -111,7 +113,7 @@ export default function ProjectsPage() {
   }
 
   async function revokeToken(projectId: string, tokenId: string) {
-    await api(`/api/projects/${projectId}/tokens/${tokenId}`, { method: 'DELETE' });
+    await deleteApiToken(tokenId);
     await loadTokens(projectId);
     setMessage('Token revocado');
   }

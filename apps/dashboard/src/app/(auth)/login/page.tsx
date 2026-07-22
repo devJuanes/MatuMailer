@@ -24,16 +24,8 @@ export default function LoginPage() {
     setError('');
     const form = new FormData(e.currentTarget);
     try {
-      const { api, setToken } = await import('@/lib/api');
-      const res = await api<{ token: string }>('/api/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({
-          email: form.get('email'),
-          password: form.get('password'),
-        }),
-        token: null,
-      });
-      setToken(res.token);
+      const { signInWithPassword } = await import('@/lib/auth-matudb');
+      await signInWithPassword(String(form.get('email')), String(form.get('password')));
       router.push('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión');

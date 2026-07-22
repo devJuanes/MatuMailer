@@ -37,9 +37,25 @@ export async function createEmailLog(
 export async function updateEmailLogStatus(
   id: string,
   status: EmailStatus,
-  extra?: { error_message?: string; sent_at?: string },
+  extra?: {
+    error_message?: string;
+    user_message?: string;
+    sent_at?: string;
+    tracking_token?: string;
+  },
 ): Promise<void> {
   await updateMany('email_logs', [{ column: 'id', value: id }], { status, ...extra });
+}
+
+export async function findByTrackingToken(token: string) {
+  const db = getMatuDb();
+  const { data, error } = await db
+    .from('email_logs')
+    .select('*')
+    .eq('tracking_token', token)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as EmailLog;
 }
 
 export async function getEmailStats(projectId: string): Promise<{

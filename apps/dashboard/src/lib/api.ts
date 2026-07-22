@@ -2,7 +2,16 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('matumailer_token');
+  const legacy = localStorage.getItem('matumailer_token');
+  if (legacy) return legacy;
+  try {
+    const raw = localStorage.getItem('matudb_session');
+    if (!raw) return null;
+    const session = JSON.parse(raw) as { access_token?: string };
+    return session.access_token ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function setToken(token: string) {
