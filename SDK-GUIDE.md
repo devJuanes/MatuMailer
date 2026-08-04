@@ -212,6 +212,43 @@ curl -X POST https://api.matucatalogo.com/api/emails/send \
 
 ---
 
+## 8b. Android / Kotlin (sin SDK npm)
+
+Desde Android llama a la API REST con OkHttp (o Retrofit). Base URL: la misma que `MATUMAILER_API_URL` / dashboard (`NEXT_PUBLIC_API_URL`).
+
+```kotlin
+val client = OkHttpClient()
+val json = JSONObject()
+  .put("to", "cliente@ejemplo.com")
+  .put("template", "bienvenida")
+  .put("data", JSONObject().put("nombre", "Ana"))
+  .toString()
+  .toRequestBody("application/json".toMediaType())
+
+val request = Request.Builder()
+  .url("https://matumailer.matubyte.com/api/emails/send")
+  .addHeader("Authorization", "Bearer mm_live_TU_TOKEN")
+  .post(json)
+  .build()
+
+client.newCall(request).execute()
+```
+
+**Plantillas vía API** (también con token `mm_live_...`):
+
+| Método | Ruta                        | Uso                                                           |
+| ------ | --------------------------- | ------------------------------------------------------------- |
+| GET    | `/api/templates`            | Listar                                                        |
+| GET    | `/api/templates/slug/:slug` | Obtener una                                                   |
+| POST   | `/api/templates`            | Crear (`slug`, `name`, `subject`, `htmlContent`, `variables`) |
+| PATCH  | `/api/templates/id/:id`     | Actualizar                                                    |
+| DELETE | `/api/templates/id/:id`     | Eliminar                                                      |
+| POST   | `/api/emails/send/bulk`     | Masivo (1 correo por destinatario)                            |
+
+Más ejemplos en el dashboard → **Documentación**.
+
+---
+
 ## 9. Respuestas y errores frecuentes
 
 ### Éxito (envío inmediato)

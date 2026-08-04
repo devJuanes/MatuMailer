@@ -12,22 +12,47 @@ const endpoints = [
   {
     method: 'POST',
     path: '/api/emails/send/bulk',
-    desc: 'Envío masivo por destinatario (opcional scheduledAt → campaña).',
+    desc: 'Envío masivo: un correo individual por destinatario (privacidad).',
+  },
+  {
+    method: 'POST',
+    path: '/api/emails/send/bulk-from-json',
+    desc: 'Envío masivo desde JSON de usuarios (objeto o array).',
   },
   {
     method: 'POST',
     path: '/api/emails/send/group',
     desc: 'Enviar plantilla a un grupo de contactos (inmediato o programado).',
   },
-  { method: 'POST', path: '/api/auth/register', desc: 'Registro MatuDB Auth' },
-  { method: 'POST', path: '/api/auth/login', desc: 'Inicio de sesión' },
-  { method: 'GET', path: '/api/projects', desc: 'Listar proyectos' },
-  { method: 'PUT', path: '/api/smtp/:projectId', desc: 'Configurar SMTP' },
   {
     method: 'GET',
-    path: '/api/templates/:projectId',
-    desc: 'Listar plantillas (slug para código)',
+    path: '/api/templates',
+    desc: 'Listar plantillas del proyecto (token API).',
   },
+  {
+    method: 'GET',
+    path: '/api/templates/slug/:slug',
+    desc: 'Obtener plantilla por slug (token API).',
+  },
+  {
+    method: 'POST',
+    path: '/api/templates',
+    desc: 'Crear plantilla (token API). Body: slug, name, subject, htmlContent, variables.',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/templates/id/:templateId',
+    desc: 'Actualizar plantilla (token API).',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/templates/id/:templateId',
+    desc: 'Eliminar plantilla (token API).',
+  },
+  { method: 'POST', path: '/api/auth/register', desc: 'Registro MatuDB Auth' },
+  { method: 'POST', path: '/api/auth/login', desc: 'Inicio de sesión' },
+  { method: 'GET', path: '/api/projects', desc: 'Listar proyectos (sesión dashboard)' },
+  { method: 'PUT', path: '/api/smtp/:projectId', desc: 'Configurar SMTP' },
   { method: 'GET', path: '/t/o/:token', desc: 'Pixel de apertura (tracking)' },
   { method: 'GET', path: '/t/c/:token?u=', desc: 'Redirect de clic trackeado' },
 ];
@@ -54,6 +79,7 @@ export default function DocsPage() {
             >
               Swagger
             </a>
+            {' · Lista para Android, cURL, Node y cualquier cliente HTTP'}
           </>
         }
         showProject={false}
@@ -61,7 +87,7 @@ export default function DocsPage() {
 
       <Card className="mb-6 border-gold/30 bg-gold/5">
         <CardHeader>
-          <CardTitle>Antes de integrar en tu código</CardTitle>
+          <CardTitle>Antes de integrar</CardTitle>
           <CardDescription>Checklist por proyecto</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-charcoal/80">
@@ -75,21 +101,193 @@ export default function DocsPage() {
               ). No uses tu contraseña de login.
             </li>
             <li>
-              (Plantillas) Crea la plantilla en el dashboard; en código usarás su{' '}
-              <strong>slug</strong> y variables{' '}
-              <code className="rounded bg-white/80 px-1">{'{{nombre}}'}</code>.
+              Autentica todas las llamadas con{' '}
+              <code className="rounded bg-white/80 px-1">Authorization: Bearer mm_live_...</code>
             </li>
             <li>
-              En cada plantilla, abre <strong>“Cómo usar esta plantilla”</strong> para ver snippets
-              con tu slug real.
+              El proyecto se toma del token: no hace falta pasar <code>projectId</code> en send /
+              templates API.
             </li>
           </ol>
         </CardContent>
       </Card>
 
+      <Card className="mb-6 border-charcoal/10">
+        <CardHeader>
+          <CardTitle>Android / Kotlin (OkHttp)</CardTitle>
+          <CardDescription>
+            Desde Android no uses el SDK npm: llama a la API REST con tu token. Guarda el token en
+            el servidor o en almacenamiento seguro — no lo subas a Play Store en texto plano.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-xs leading-relaxed text-charcoal/80 sm:text-sm">
+            {`// build.gradle.kts → implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+val client = OkHttpClient()
+val apiUrl = "${apiUrl}"
+val token = "mm_live_TU_TOKEN" // idealmente desde tu backend
+
+fun sendEmail(to: String, template: String, data: JSONObject) {
+  val body = JSONObject()
+    .put("to", to)
+    .put("template", template)
+    .put("data", data)
+    .toString()
+    .toRequestBody("application/json".toMediaType())
+
+  val request = Request.Builder()
+    .url(apiUrl + "/api/emails/send")
+    .addHeader("Authorization", "Bearer " + token)
+    .addHeader("Content-Type", "application/json")
+    .post(body)
+    .build()
+
+  client.newCall(request).enqueue(object : Callback {
+    override fun onResponse(call: Call, response: Response) {
+      val json = response.body?.string()
+      // { "success": true, "id": "...", "status": "sent" }
+    }
+    override fun onFailure(call: Call, e: IOException) { /* ... */ }
+  })
+}
+
+// Ejemplo:
+sendEmail(
+  "pepito@mail.com",
+  "campana",
+  JSONObject()
+    .put("primerNombre", "Pepito")
+    .put("titulo", "Novedades")
+    .put("mensaje", "Hola, solo tú ves este correo.")
+    .put("enlace", "https://tudominio.com")
+)`}
+          </pre>
+
+          <p className="text-sm font-medium text-charcoal">
+            Envío masivo (privacidad: 1 correo por persona)
+          </p>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-xs leading-relaxed text-charcoal/80 sm:text-sm">
+            {`val body = JSONObject()
+  .put("template", "campana")
+  .put("recipients", JSONArray()
+    .put(JSONObject()
+      .put("email", "a@x.com")
+      .put("data", JSONObject().put("nombre", "Ana").put("titulo", "Hola")))
+    .put(JSONObject()
+      .put("email", "b@x.com")
+      .put("data", JSONObject().put("nombre", "Luis").put("titulo", "Hola")))
+  )
+  .toString()
+  .toRequestBody("application/json".toMediaType())
+
+val request = Request.Builder()
+  .url("${apiUrl}/api/emails/send/bulk")
+  .addHeader("Authorization", "Bearer " + token)
+  .post(body)
+  .build()`}
+          </pre>
+
+          <p className="text-sm font-medium text-charcoal">Crear plantilla desde la app</p>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-xs leading-relaxed text-charcoal/80 sm:text-sm">
+            {`val body = JSONObject()
+  .put("slug", "aviso-app")
+  .put("name", "Aviso desde app")
+  .put("subject", "Hola, {{nombre}}")
+  .put("htmlContent", "<h1>Hola {{nombre}}</h1><p>{{mensaje}}</p>")
+  .put("variables", JSONArray().put("nombre").put("mensaje"))
+  .toString()
+  .toRequestBody("application/json".toMediaType())
+
+val request = Request.Builder()
+  .url("${apiUrl}/api/templates")
+  .addHeader("Authorization", "Bearer " + token)
+  .post(body)
+  .build()`}
+          </pre>
+        </CardContent>
+      </Card>
+
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Instalación SDK</CardTitle>
+          <CardTitle>cURL (cualquier plataforma)</CardTitle>
+          <CardDescription>Ideal para probar desde terminal o Postman</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm font-medium text-charcoal">Enviar con plantilla</p>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-xs text-charcoal/80 sm:text-sm">
+            {`curl -X POST ${apiUrl}/api/emails/send \\
+  -H "Authorization: Bearer mm_live_TU_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "to": "usuario@ejemplo.com",
+    "template": "campana",
+    "data": {
+      "primerNombre": "Juan",
+      "titulo": "Novedades",
+      "mensaje": "Solo tú recibes este correo.",
+      "enlace": "https://ejemplo.com"
+    }
+  }'`}
+          </pre>
+
+          <p className="text-sm font-medium text-charcoal">Correo libre (HTML)</p>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-xs text-charcoal/80 sm:text-sm">
+            {`curl -X POST ${apiUrl}/api/emails/send \\
+  -H "Authorization: Bearer mm_live_TU_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "to": "usuario@ejemplo.com",
+    "subject": "Confirmación",
+    "html": "<h1>Gracias</h1><p>Pedido #1234</p>"
+  }'`}
+          </pre>
+
+          <p className="text-sm font-medium text-charcoal">Envío masivo</p>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-xs text-charcoal/80 sm:text-sm">
+            {`curl -X POST ${apiUrl}/api/emails/send/bulk \\
+  -H "Authorization: Bearer mm_live_TU_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "template": "campana",
+    "recipients": [
+      { "email": "a@x.com", "data": { "nombre": "Ana", "titulo": "Hola", "mensaje": "…", "enlace": "https://…" } },
+      { "email": "b@x.com", "data": { "nombre": "Luis", "titulo": "Hola", "mensaje": "…", "enlace": "https://…" } }
+    ]
+  }'`}
+          </pre>
+
+          <p className="text-sm font-medium text-charcoal">Listar / crear plantillas</p>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-xs text-charcoal/80 sm:text-sm">
+            {`# Listar
+curl ${apiUrl}/api/templates \\
+  -H "Authorization: Bearer mm_live_TU_TOKEN"
+
+# Crear
+curl -X POST ${apiUrl}/api/templates \\
+  -H "Authorization: Bearer mm_live_TU_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "slug": "mi-aviso",
+    "name": "Mi aviso",
+    "subject": "Hola {{nombre}}",
+    "htmlContent": "<p>Hola {{nombre}}, {{mensaje}}</p>",
+    "variables": ["nombre", "mensaje"]
+  }'
+
+# Por slug
+curl ${apiUrl}/api/templates/slug/mi-aviso \\
+  -H "Authorization: Bearer mm_live_TU_TOKEN"`}
+          </pre>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Instalación SDK (Node.js)</CardTitle>
+          <CardDescription>
+            Solo para backends Node / Next.js — no aplica en Android
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-sm text-charcoal/80">
@@ -100,7 +298,7 @@ export default function DocsPage() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Correo libre (HTML tuyo)</CardTitle>
+          <CardTitle>Correo libre (HTML tuyo) — SDK</CardTitle>
           <CardDescription>Sin plantilla del dashboard — tú envías subject y html</CardDescription>
         </CardHeader>
         <CardContent>
@@ -124,9 +322,9 @@ await mail.send({
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Correo con plantilla</CardTitle>
+          <CardTitle>Correo con plantilla — SDK</CardTitle>
           <CardDescription>
-            Usa el <strong>slug</strong> de una plantilla de este proyecto y <code>data</code> para{' '}
+            Usa el <strong>slug</strong> de una plantilla y <code>data</code> para{' '}
             <code>{'{{variables}}'}</code>
           </CardDescription>
         </CardHeader>
@@ -134,21 +332,16 @@ await mail.send({
           <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-sm text-charcoal/80">
             {`await mail.sendTemplate(
   'usuario@ejemplo.com',
-  'bienvenida',        // slug de la plantilla
+  'bienvenida',
   { nombre: 'Juan', codigo: '48291' },
 );
 
-// o equivalente:
 await mail.send({
   to: 'usuario@ejemplo.com',
   template: 'bienvenida',
   data: { nombre: 'Juan', codigo: '48291' },
 });`}
           </pre>
-          <p className="text-sm text-muted-foreground">
-            El asunto sale de la plantilla salvo que pases <code>subject</code> en <code>send</code>{' '}
-            o el 4º argumento de <code>sendTemplate</code>.
-          </p>
         </CardContent>
       </Card>
 
@@ -181,7 +374,6 @@ await mail.send({
   groupId: 'uuid-del-grupo',
   template: 'campana',
   data: { titulo: 'Novedades', mensaje: 'Hola…', enlace: 'https://…' },
-  // scheduledAt: '2026-05-25T15:00:00.000Z', // opcional → jobs durables
 });`}
           </pre>
         </CardContent>
@@ -190,6 +382,9 @@ await mail.send({
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Bulk / masivo</CardTitle>
+          <CardDescription>
+            Cada destinatario recibe su propio correo; nadie ve los emails de los demás.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-sm text-charcoal/80">
@@ -214,8 +409,8 @@ await mail.send({
 MATUMAILER_API_URL=${apiUrl}`}
           </pre>
           <p className="mt-3 text-sm text-muted-foreground">
-            El token solo en servidor (API routes, workers). No lo expongas en el frontend del
-            cliente.
+            En Android: usa la misma URL base y el token en el header Bearer. Preferible que tu
+            backend Android proxyee las llamadas para no embeber el token en la APK.
           </p>
         </CardContent>
       </Card>
@@ -234,12 +429,22 @@ MATUMAILER_API_URL=${apiUrl}`}
               <code>TEMPLATE_NOT_FOUND</code> — slug incorrecto o plantilla de otro proyecto.
             </li>
             <li>
-              <code>401</code> — token revocado o incorrecto.
+              <code>401</code> — token revocado o incorrecto. Debe ser <code>mm_live_...</code>, no
+              el JWT de login.
+            </li>
+            <li>
+              <code>SLUG_EXISTS</code> — ya hay una plantilla con ese slug en el proyecto.
             </li>
           </ul>
         </CardContent>
       </Card>
 
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-charcoal">Endpoints</h2>
+        <p className="text-sm text-muted-foreground">
+          Con token API el proyecto se resuelve solo. Swagger: {apiUrl}/docs
+        </p>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {endpoints.map((ep) => (
           <Card key={ep.path + ep.method}>

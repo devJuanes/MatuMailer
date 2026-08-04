@@ -4,8 +4,9 @@
   "version": "1.0.0",
   "description": "MatuMailer — Modern email infrastructure platform for developers",
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run build --filter=@matumailer/shared --filter=@matumailer/database --filter=matumailer && turbo run dev --filter=@matumailer/api --filter=@matumailer/dashboard",
+    "build": "node scripts/sync-dashboard-env.mjs && turbo run build",
+    "sync-dashboard-env": "node scripts/sync-dashboard-env.mjs",
+    "dev": "node scripts/sync-dashboard-env.mjs && turbo run build --filter=@matumailer/shared --filter=@matumailer/database --filter=matumailer && turbo run dev --filter=@matumailer/api --filter=@matumailer/dashboard",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",

@@ -12,6 +12,43 @@ export interface Template {
   project_id?: string;
 }
 
+/** MatuDB exige columnas JSONB como string JSON válido. */
+function toJsonb(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value;
+  return JSON.stringify(value);
+}
+
+function normalizeTemplate(row: Record<string, unknown>): Template {
+  const variables = row.variables;
+  let parsedVars: string[] = [];
+  if (Array.isArray(variables)) {
+    parsedVars = variables.map(String);
+  } else if (typeof variables === 'string') {
+    try {
+      const v = JSON.parse(variables);
+      parsedVars = Array.isArray(v) ? v.map(String) : [];
+    } catch {
+      parsedVars = [];
+    }
+  }
+
+  let builderData = row.builder_data ?? null;
+  if (typeof builderData === 'string') {
+    try {
+      builderData = JSON.parse(builderData);
+    } catch {
+      builderData = null;
+    }
+  }
+
+  return {
+    ...(row as unknown as Template),
+    variables: parsedVars,
+    builder_data: builderData,
+  };
+}
+
 export async function listTemplates(projectId: string): Promise<Template[]> {
   const db = getMatuDb();
   const { data, error } = await db
@@ -20,7 +57,7 @@ export async function listTemplates(projectId: string): Promise<Template[]> {
     .eq('project_id', projectId)
     .order('created_at', { ascending: true });
   if (error) throw new Error(error.message);
-  return (data ?? []) as Template[];
+  return (data ?? []).map((row) => normalizeTemplate(row as Record<string, unknown>));
 }
 
 export async function updateTemplate(
@@ -35,7 +72,12 @@ export async function updateTemplate(
   },
 ): Promise<void> {
   const db = getMatuDb();
-  const { error } = await db.from('templates').eq('id', templateId).update(updates);
+  const row: Record<string, unknown> = { ...updates };
+  if (updates.variables !== undefined) row.variables = toJsonb(updates.variables);
+  if (updates.builder_data !== undefined) {
+    row.builder_data = updates.builder_data === null ? null : toJsonb(updates.builder_data);
+  }
+  const { error } = await db.from('templates').eq('id', templateId).update(row);
   if (error) throw new Error(error.message);
 }
 
@@ -57,12 +99,16 @@ export async function createTemplate(
     name: input.name,
     subject: input.subject,
     html_content: input.html_content,
-    builder_data: input.builder_data ?? null,
-    variables: input.variables ?? [],
+    builder_data:
+      input.builder_data === undefined || input.builder_data === null
+        ? null
+        : toJsonb(input.builder_data),
+    variables: toJsonb(input.variables ?? []),
     is_system: false,
   });
   if (error) throw new Error(error.message);
-  return (Array.isArray(data) ? data[0] : data) as Template;
+  const raw = (Array.isArray(data) ? data[0] : data) as Record<string, unknown>;
+  return normalizeTemplate(raw);
 }
 
 export async function deleteTemplate(templateId: string): Promise<void> {

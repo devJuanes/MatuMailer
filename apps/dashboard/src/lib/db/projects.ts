@@ -61,7 +61,8 @@ export async function createProject(input: {
       subject: tpl.subject,
       html_content: tpl.html_content,
       builder_data: null,
-      variables: tpl.variables,
+      // MatuDB exige JSONB como string JSON
+      variables: JSON.stringify(tpl.variables),
       is_system: true,
     });
     if (tplErr) throw new Error(tplErr.message);

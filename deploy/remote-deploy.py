@@ -134,12 +134,35 @@ def main():
 
     ensure_env(client)
 
+    # Dashboard necesita NEXT_PUBLIC_MATUDB_* en build time (login/client)
     run(
         client,
-        f"""cat > {APP_DIR}/apps/dashboard/.env.production << 'EOF'
+        f"""
+set -e
+cd {APP_DIR}
+MATUDB_URL=$(grep -E '^MATUDB_URL=' .env | head -1 | cut -d= -f2- | tr -d '\\r')
+MATUDB_PROJECT_ID=$(grep -E '^MATUDB_PROJECT_ID=' .env | head -1 | cut -d= -f2- | tr -d '\\r')
+MATUDB_API_KEY=$(grep -E '^MATUDB_API_KEY=' .env | head -1 | cut -d= -f2- | tr -d '\\r')
+# Prefer NEXT_PUBLIC_* already in root .env if present
+NP_URL=$(grep -E '^NEXT_PUBLIC_MATUDB_URL=' .env | head -1 | cut -d= -f2- | tr -d '\\r' || true)
+NP_PID=$(grep -E '^NEXT_PUBLIC_MATUDB_PROJECT_ID=' .env | head -1 | cut -d= -f2- | tr -d '\\r' || true)
+NP_KEY=$(grep -E '^NEXT_PUBLIC_MATUDB_API_KEY=' .env | head -1 | cut -d= -f2- | tr -d '\\r' || true)
+URL=${{NP_URL:-$MATUDB_URL}}
+PID=${{NP_PID:-$MATUDB_PROJECT_ID}}
+KEY=${{NP_KEY:-$MATUDB_API_KEY}}
+if [ -z "$URL" ] || [ -z "$PID" ] || [ -z "$KEY" ]; then
+  echo "ERROR: faltan MATUDB_* en {APP_DIR}/.env" >&2
+  exit 1
+fi
+cat > apps/dashboard/.env.production << EOF
 NEXT_PUBLIC_API_URL={SITE_URL}
 NEXT_PUBLIC_APP_URL={SITE_URL}
-EOF""",
+NEXT_PUBLIC_MATUDB_URL=$URL
+NEXT_PUBLIC_MATUDB_PROJECT_ID=$PID
+NEXT_PUBLIC_MATUDB_API_KEY=$KEY
+EOF
+echo "✓ apps/dashboard/.env.production escrito"
+""",
     )
 
     run(client, f"cd {APP_DIR} && npm run db:migrate:subscriptions --workspace=@matumailer/database || true")

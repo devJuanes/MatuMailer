@@ -13,7 +13,12 @@ export function TemplateUsageDocs({ slug, variables, projectSlug = 'mi-proyecto'
   const dataExample =
     variables.length > 0
       ? JSON.stringify(
-          Object.fromEntries(variables.map((v) => [v, v === 'resetLink' ? 'https://app.com/reset?token=abc' : 'valor'])),
+          Object.fromEntries(
+            variables.map((v) => [
+              v,
+              v === 'resetLink' ? 'https://app.com/reset?token=abc' : 'valor',
+            ]),
+          ),
           null,
           2,
         )
@@ -41,6 +46,31 @@ await mailer.sendTemplate(
     "data": ${dataExample.replace(/\n/g, '')}
   }'`;
 
+  const androidSnippet = `// OkHttp — Android / Kotlin
+val body = JSONObject()
+  .put("to", "cliente@ejemplo.com")
+  .put("template", "${slug}")
+  .put("data", JSONObject(${
+    variables.length > 0
+      ? variables
+          .map(
+            (v) =>
+              `\n    .put("${v}", "${v === 'resetLink' ? 'https://app.com/reset?token=abc' : 'valor'}")`,
+          )
+          .join('')
+      : ''
+  }))
+  .toString()
+  .toRequestBody("application/json".toMediaType())
+
+val request = Request.Builder()
+  .url("${apiUrl}/api/emails/send")
+  .addHeader("Authorization", "Bearer mm_live_TU_TOKEN")
+  .post(body)
+  .build()
+
+client.newCall(request).execute()`;
+
   const formSnippet = `<form action="${apiUrl}/api/emails/send" method="POST">
   <input type="hidden" name="template" value="${slug}" />
   <input type="email" name="to" placeholder="Correo destino" required />
@@ -61,25 +91,33 @@ ${variables
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         <p className="text-muted-foreground">
-          Proyecto <strong>{projectSlug}</strong> · plantilla <code className="rounded bg-white/80 px-1">/{slug}</code>
-          {variables.length > 0 && (
-            <>
-              {' '}
-              · variables: {variables.map((v) => `{{${v}}}`).join(', ')}
-            </>
-          )}
+          Proyecto <strong>{projectSlug}</strong> · plantilla{' '}
+          <code className="rounded bg-white/80 px-1">/{slug}</code>
+          {variables.length > 0 && <> · variables: {variables.map((v) => `{{${v}}}`).join(', ')}</>}
         </p>
         <div>
+          <p className="mb-1 font-medium text-charcoal">Android / Kotlin (API REST)</p>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/90 p-4 text-xs text-gold/90">
+            {androidSnippet}
+          </pre>
+        </div>
+        <div>
           <p className="mb-1 font-medium text-charcoal">SDK (Node.js)</p>
-          <pre className="overflow-x-auto rounded-2xl bg-charcoal/90 p-4 text-xs text-gold/90">{sdkSnippet}</pre>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/90 p-4 text-xs text-gold/90">
+            {sdkSnippet}
+          </pre>
         </div>
         <div>
           <p className="mb-1 font-medium text-charcoal">cURL</p>
-          <pre className="overflow-x-auto rounded-2xl bg-charcoal/90 p-4 text-xs text-gold/90">{curlSnippet}</pre>
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/90 p-4 text-xs text-gold/90">
+            {curlSnippet}
+          </pre>
         </div>
         <div>
           <p className="mb-1 font-medium text-charcoal">Formulario HTML (ejemplo)</p>
-          <pre className="overflow-x-auto rounded-2xl bg-white/80 p-4 text-xs text-charcoal">{formSnippet}</pre>
+          <pre className="overflow-x-auto rounded-2xl bg-white/80 p-4 text-xs text-charcoal">
+            {formSnippet}
+          </pre>
         </div>
       </CardContent>
     </Card>
