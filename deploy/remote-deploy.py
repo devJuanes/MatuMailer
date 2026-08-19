@@ -16,6 +16,7 @@ PASSWORD = os.environ.get("SSH_PASS", "")
 APP_DIR = "/root/apps/MatuMailer"
 MATUOPS_DIR = "/root/apps/Matuops"
 SITE_URL = "https://matumailer.matubyte.com"
+API_URL = os.environ.get("API_URL", "https://api.matucatalogo.com")
 PAY_API_KEY = "pk_matumailer_prod_cambiar"
 MATUOPS_APP_TOKEN = os.environ.get(
     "MATUOPS_APP_TOKEN",
@@ -155,7 +156,7 @@ if [ -z "$URL" ] || [ -z "$PID" ] || [ -z "$KEY" ]; then
   exit 1
 fi
 cat > apps/dashboard/.env.production << EOF
-NEXT_PUBLIC_API_URL={SITE_URL}
+NEXT_PUBLIC_API_URL={API_URL}
 NEXT_PUBLIC_APP_URL={SITE_URL}
 NEXT_PUBLIC_MATUDB_URL=$URL
 NEXT_PUBLIC_MATUDB_PROJECT_ID=$PID

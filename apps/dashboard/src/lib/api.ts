@@ -1,4 +1,31 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
+const FALLBACK_PROD_API_URL = 'https://api.matucatalogo.com';
+
+function resolveApiBase(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  const isBrowser = typeof window !== 'undefined';
+
+  if (!raw) {
+    if (!isBrowser && process.env.NODE_ENV === 'production') {
+      console.warn('[matumailer] NEXT_PUBLIC_API_URL no definida — usando default de producción.');
+    }
+    return isBrowser && process.env.NODE_ENV === 'production'
+      ? FALLBACK_PROD_API_URL
+      : 'http://localhost:4001';
+  }
+
+  // Evita que el dashboard termine apuntándose a sí mismo (bug clásico).
+  if (isBrowser && raw.includes(window.location.host) && raw !== FALLBACK_PROD_API_URL) {
+    console.error(
+      `[matumailer] NEXT_PUBLIC_API_URL="${raw}" apunta al propio dashboard. ` +
+        `Corrígelo a "${FALLBACK_PROD_API_URL}" antes de hacer build de producción.`,
+    );
+    return FALLBACK_PROD_API_URL;
+  }
+
+  return raw;
+}
+
+const API_URL = resolveApiBase();
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
