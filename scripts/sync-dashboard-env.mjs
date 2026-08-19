@@ -102,9 +102,12 @@ writeFileSync(localPath, formatEnv(localVars), 'utf8');
 
 const prodVars = {
   ...merged,
-  NEXT_PUBLIC_API_URL: env.APP_URL?.startsWith('https://')
-    ? env.APP_URL
-    : 'https://matumailer.matubyte.com',
+  // ⚠️ NEXT_PUBLIC_API_URL debe apuntar a la API pública, NO al dashboard.
+  // Prioridad: NEXT_PUBLIC_API_URL del .env raíz → API_URL → fallback explícito.
+  NEXT_PUBLIC_API_URL:
+    env.NEXT_PUBLIC_API_URL ||
+    env.API_URL ||
+    'https://api.matucatalogo.com',
   NEXT_PUBLIC_APP_URL: env.APP_URL?.startsWith('https://')
     ? env.APP_URL
     : 'https://matumailer.matubyte.com',
