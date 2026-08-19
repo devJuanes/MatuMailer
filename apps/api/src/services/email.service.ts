@@ -5,6 +5,7 @@ import {
   brandingRepo,
   campaignsRepo,
   contactsRepo,
+  domainsRepo,
   emailLogsRepo,
   smtpConfigsRepo,
   templatesRepo,
@@ -23,6 +24,7 @@ import {
 import { applyBranding, injectTracking } from '../lib/branding-render.js';
 import { humanizeEmailError } from '../lib/humanize-error.js';
 import { renderTemplate } from '../lib/template-engine.js';
+import { signDkim } from '../lib/dkim-sign.js';
 
 function smtpAuth(config: SmtpConfig) {
   const user = normalizeSmtpUsername(config.username);
@@ -85,6 +87,13 @@ export interface SendEmailOptions {
   logMetadata?: Record<string, unknown>;
   campaignId?: string | null;
   groupId?: string | null;
+  from?: string;
+  fromName?: string;
+  replyTo?: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
+  headers?: Record<string, string>;
+  tags?: Array<{ name: string; value: string }>;
 }
 
 export interface BulkRecipient {
@@ -127,7 +136,7 @@ async function resolveMailContent(
 ): Promise<ResolvedMailContent> {
   let subject = options.subject ?? 'No Subject';
   let html = options.html ?? '';
-  let text = options.text;
+  const text = options.text;
   let templateSlug: string | null = null;
   const branding = await brandingRepo.getByProject(projectId);
 
@@ -164,6 +173,51 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function normalizeAddressList(value: string | string[] | undefined): string | undefined {
+  if (!value) return undefined;
+  return Array.isArray(value) ? value.join(', ') : value;
+}
+
+function buildMimeMessage(params: {
+  from: string;
+  fromName?: string | null;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  replyTo?: string;
+  cc?: string;
+  bcc?: string;
+  headers?: Record<string, string>;
+  messageId: string;
+  date: string;
+  dkimHeader?: string;
+}): string {
+  const fromHeader = params.fromName
+    ? `From: "${params.fromName.replace(/"/g, "'")}" <${params.from}>\r\n`
+    : `From: ${params.from}\r\n`;
+  const headers: string[] = [
+    fromHeader,
+    `To: ${params.to}\r\n`,
+    params.replyTo ? `Reply-To: ${params.replyTo}\r\n` : '',
+    params.cc ? `Cc: ${params.cc}\r\n` : '',
+    params.bcc ? `Bcc: ${params.bcc}\r\n` : '',
+    `Subject: ${params.subject}\r\n`,
+    `Date: ${params.date}\r\n`,
+    `Message-ID: ${params.messageId}\r\n`,
+    `MIME-Version: 1.0\r\n`,
+    `Content-Type: text/html; charset=utf-8\r\n`,
+    `Content-Transfer-Encoding: quoted-printable\r\n`,
+  ];
+  if (params.dkimHeader) headers.push(`${params.dkimHeader}\r\n`);
+  if (params.headers) {
+    for (const [k, v] of Object.entries(params.headers)) {
+      headers.push(`${k}: ${v}\r\n`);
+    }
+  }
+  return headers.join('') + `\r\n${params.html}`;
+}
+
 async function sendEmailToOne(
   projectId: string,
   to: string,
@@ -172,10 +226,34 @@ async function sendEmailToOne(
   logMetadata: Record<string, unknown> = {},
   campaignId: string | null = null,
   groupId: string | null = null,
+  overrides: {
+    from?: string;
+    fromName?: string;
+    replyTo?: string | string[];
+    cc?: string | string[];
+    bcc?: string | string[];
+    headers?: Record<string, string>;
+    tags?: Array<{ name: string; value: string }>;
+  } = {},
 ): Promise<{ id: string; status: string }> {
   const smtp = await assertSmtpReady(projectId);
   const branding = await brandingRepo.getByProject(projectId);
   const trackingToken = crypto.randomBytes(24).toString('hex');
+
+  const fromEmail = (overrides.from ?? smtp.from_email).trim().toLowerCase();
+  const fromName = overrides.fromName ?? smtp.from_name ?? null;
+
+  const verifiedDomain = overrides.from
+    ? await domainsRepo.findVerifiedDomainForEmail(projectId, fromEmail)
+    : null;
+
+  if (overrides.from && !verifiedDomain) {
+    throw new Error('FROM_DOMAIN_NOT_VERIFIED');
+  }
+
+  const replyTo = normalizeAddressList(overrides.replyTo ?? smtp.from_email);
+  const cc = normalizeAddressList(overrides.cc);
+  const bcc = normalizeAddressList(overrides.bcc);
 
   const log = await emailLogsRepo.createEmailLog({
     project_id: projectId,
@@ -188,7 +266,14 @@ async function sendEmailToOne(
     campaign_id: campaignId,
     group_id: groupId,
     tracking_token: trackingToken,
-    metadata: { recipients: [to], data, ...logMetadata },
+    metadata: {
+      recipients: [to],
+      data,
+      from: fromEmail,
+      fromName,
+      dkimDomainId: verifiedDomain?.id ?? null,
+      ...logMetadata,
+    },
     sent_at: null,
   });
 
@@ -202,23 +287,78 @@ async function sendEmailToOne(
       subject: content.subject,
       html,
       text: content.text,
-      fromEmail: smtp.from_email,
-      fromName: smtp.from_name,
+      fromEmail,
+      fromName,
       logId: log.id,
     });
 
     const transport = await createTransporter(smtp);
+
+    const extraHeaders: Record<string, string> = {
+      ...prepared.headers,
+      'Message-ID': buildMessageId(fromEmail),
+    };
+
+    if (overrides.headers) {
+      Object.assign(extraHeaders, overrides.headers);
+    }
+
+    if (overrides.tags?.length) {
+      for (const tag of overrides.tags) {
+        extraHeaders[`X-MatuMailer-Tag-${tag.name}`] = tag.value;
+      }
+    }
+
+    let dkimSignatureHeader: string | undefined;
+
+    if (verifiedDomain) {
+      try {
+        const privateKeyPem = decrypt(verifiedDomain.dkim_private_key_encrypted);
+        const mimeMessage = buildMimeMessage({
+          from: fromEmail,
+          fromName,
+          to,
+          subject: prepared.subject,
+          text: prepared.text,
+          html: prepared.html,
+          replyTo,
+          cc,
+          bcc,
+          headers: extraHeaders,
+          messageId: extraHeaders['Message-ID'],
+          date: new Date().toUTCString(),
+        });
+        dkimSignatureHeader = signDkim(mimeMessage, {
+          selector: verifiedDomain.dkim_selector,
+          domain: verifiedDomain.domain,
+          privateKey: privateKeyPem,
+        });
+      } catch (dkimErr) {
+        console.warn('[email.service] DKIM signing failed:', dkimErr);
+      }
+    }
+
+    if (dkimSignatureHeader) {
+      const lines = dkimSignatureHeader.split(/\r?\n/);
+      for (const line of lines) {
+        const idx = line.indexOf(':');
+        if (idx === -1) continue;
+        const name = line.slice(0, idx).trim();
+        const value = line.slice(idx + 1).trim();
+        if (name && value && !extraHeaders[name]) extraHeaders[name] = value;
+      }
+    }
+
     await transport.sendMail({
-      from: formatFromAddress(smtp.from_email, smtp.from_name),
-      replyTo: smtp.from_email,
+      from: formatFromAddress(fromEmail, fromName),
+      replyTo,
       to,
+      cc: overrides.cc,
+      bcc: overrides.bcc,
       subject: prepared.subject,
       html: prepared.html,
       text: prepared.text,
-      headers: {
-        ...prepared.headers,
-        'Message-ID': buildMessageId(smtp.from_email),
-      },
+      headers: extraHeaders,
       encoding: 'utf-8',
       priority: 'normal',
     });
@@ -264,6 +404,15 @@ export async function sendEmail(
       options.logMetadata ?? {},
       options.campaignId ?? null,
       options.groupId ?? null,
+      {
+        from: options.from,
+        fromName: options.fromName,
+        replyTo: options.replyTo,
+        cc: options.cc,
+        bcc: options.bcc,
+        headers: options.headers,
+        tags: options.tags,
+      },
     );
   }
 
@@ -279,6 +428,13 @@ export async function sendEmail(
     })),
     campaignId: options.campaignId,
     groupId: options.groupId,
+    from: options.from,
+    fromName: options.fromName,
+    replyTo: options.replyTo,
+    cc: options.cc,
+    bcc: options.bcc,
+    headers: options.headers,
+    tags: options.tags,
   });
 
   if (bulk.failed > 0) {
@@ -299,6 +455,13 @@ export async function sendBulkEmail(options: {
   delayMs?: number;
   campaignId?: string | null;
   groupId?: string | null;
+  from?: string;
+  fromName?: string;
+  replyTo?: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
+  headers?: Record<string, string>;
+  tags?: Array<{ name: string; value: string }>;
 }): Promise<BulkSendResult> {
   await assertSmtpReady(options.projectId);
 
@@ -350,6 +513,15 @@ export async function sendBulkEmail(options: {
         {},
         options.campaignId ?? null,
         options.groupId ?? null,
+        {
+          from: options.from,
+          fromName: options.fromName,
+          replyTo: options.replyTo,
+          cc: options.cc,
+          bcc: options.bcc,
+          headers: options.headers,
+          tags: options.tags,
+        },
       );
       sent++;
       results.push({ email: recipient.email, id: result.id, status: 'sent' });

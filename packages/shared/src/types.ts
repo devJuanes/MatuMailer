@@ -1,4 +1,7 @@
 import type {
+  DOMAIN_REGIONS,
+  DOMAIN_STATUSES,
+  DNS_RECORD_TYPES,
   EMAIL_STATUS,
   SCHEDULED_EMAIL_STATUS,
   SMTP_PROVIDERS,
@@ -9,6 +12,10 @@ export type SmtpProvider = (typeof SMTP_PROVIDERS)[number];
 export type TemplateSlug = (typeof TEMPLATE_SLUGS)[number];
 export type EmailStatus = (typeof EMAIL_STATUS)[number];
 export type ScheduledEmailStatus = (typeof SCHEDULED_EMAIL_STATUS)[number];
+export type DomainStatus = (typeof DOMAIN_STATUSES)[number];
+export type DomainRegion = (typeof DOMAIN_REGIONS)[number];
+export type DnsRecordType = (typeof DNS_RECORD_TYPES)[number];
+export type DnsRecordStatus = 'pending' | 'verified' | 'failed';
 
 export interface User {
   id: string;
@@ -204,4 +211,45 @@ export interface ScheduledEmail {
 export interface MatuMailerConfig {
   token: string;
   baseUrl?: string;
+}
+
+export interface Domain {
+  id: string;
+  project_id: string;
+  domain: string;
+  region: DomainRegion;
+  status: DomainStatus;
+  dkim_selector: string;
+  dkim_public_key: string;
+  dkim_private_key_encrypted: string;
+  return_path_subdomain: string;
+  last_check_at: string | null;
+  last_verified_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainDnsRecord {
+  id: string;
+  domain_id: string;
+  type: DnsRecordType;
+  host: string;
+  value: string;
+  priority: number | null;
+  status: DnsRecordStatus;
+  last_check_at: string | null;
+  last_value: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainWithRecords extends Domain {
+  records: DomainDnsRecord[];
+}
+
+export interface DomainVerificationResult {
+  domain: Domain;
+  records: DomainDnsRecord[];
+  verified: boolean;
+  missing: Array<{ type: DnsRecordType; host: string; reason: string }>;
 }

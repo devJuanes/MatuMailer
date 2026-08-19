@@ -5,6 +5,7 @@ import {
   Crown,
   FileText,
   FolderKanban,
+  Globe,
   LayoutDashboard,
   Mail,
   Palette,
@@ -26,6 +27,7 @@ export type DashboardNavItem = {
 export const dashboardNav: DashboardNavItem[] = [
   { href: '/dashboard', label: 'Resumen', icon: LayoutDashboard },
   { href: '/dashboard/projects', label: 'Proyectos', icon: FolderKanban },
+  { href: '/dashboard/domains', label: 'Dominios', icon: Globe },
   { href: '/dashboard/smtp', label: 'SMTP', icon: Server },
   { href: '/dashboard/branding', label: 'Marca', icon: Palette },
   { href: '/dashboard/templates', label: 'Plantillas', icon: FileText },

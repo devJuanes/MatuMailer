@@ -16,6 +16,7 @@ import { billingRoutes } from './routes/billing.routes.js';
 import { contactsRoutes } from './routes/contacts.routes.js';
 import { brandingRoutes } from './routes/branding.routes.js';
 import { trackingRoutes } from './routes/tracking.routes.js';
+import { domainsRoutes } from './routes/domains.routes.js';
 import { startScheduleWorker } from './services/schedule.service.js';
 import { getMatuOps, reportMatuOpsError, startMatuOps, stopMatuOps } from './lib/matuops.js';
 
@@ -80,6 +81,7 @@ async function buildServer() {
   await app.register(billingRoutes, { prefix: '/api/billing' });
   await app.register(contactsRoutes, { prefix: '/api/contacts' });
   await app.register(brandingRoutes, { prefix: '/api/branding' });
+  await app.register(domainsRoutes, { prefix: '/api/domains' });
   await app.register(trackingRoutes);
 
   app.setErrorHandler(async (error, request, reply) => {

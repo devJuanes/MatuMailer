@@ -2,6 +2,10 @@ import type {
   BulkSendFromJsonPayload,
   BulkSendPayload,
   BulkSendResult,
+  CreateDomainPayload,
+  DomainRecord,
+  DomainVerifyResult,
+  DomainWithRecords,
   GroupSendPayload,
   GroupSendResult,
   MatuMailerConfig,
@@ -11,6 +15,22 @@ import { MatuMailerError, parseApiError } from './errors.js';
 import { detectSmtp, loadEnvToken } from './smtp-detect.js';
 
 const DEFAULT_BASE_URL = 'https://api.matucatalogo.com';
+
+export interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  body?: unknown;
+  query?: Record<string, string | number | boolean | undefined>;
+}
+
+function buildQuery(params: Record<string, string | number | boolean | undefined> = {}): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null) continue;
+    sp.set(k, String(v));
+  }
+  const qs = sp.toString();
+  return qs ? `?${qs}` : '';
+}
 
 export class MatuMailer {
   private readonly token: string;
@@ -32,7 +52,7 @@ export class MatuMailer {
   }
 
   async send(payload: SendEmailPayload): Promise<{ id: string; status: string }> {
-    return this.request('/api/emails/send', payload);
+    return this.request('/api/emails/send', { method: 'POST', body: payload });
   }
 
   async sendTemplate(
@@ -46,39 +66,74 @@ export class MatuMailer {
 
   /** Envío masivo: un correo individual por destinatario (privacidad total). */
   async sendBulk(payload: BulkSendPayload): Promise<BulkSendResult> {
-    return this.request('/api/emails/send/bulk', payload);
+    return this.request('/api/emails/send/bulk', { method: 'POST', body: payload });
   }
 
   /** Envío masivo desde JSON de usuarios (objeto o array). */
   async sendBulkFromJson(payload: BulkSendFromJsonPayload): Promise<BulkSendResult> {
-    return this.request('/api/emails/send/bulk-from-json', payload);
+    return this.request('/api/emails/send/bulk-from-json', { method: 'POST', body: payload });
   }
 
   /** Envío a un grupo de contactos (inmediato o programado). */
   async sendToGroup(payload: GroupSendPayload): Promise<GroupSendResult> {
-    return this.request('/api/emails/send/group', payload);
+    return this.request('/api/emails/send/group', { method: 'POST', body: payload });
+  }
+
+  /** Lista los dominios configurados para el proyecto. */
+  async listDomains(projectId: string): Promise<{ domains: DomainRecord[] }> {
+    return this.request(`/api/domains${buildQuery({ projectId })}`, { method: 'GET' });
+  }
+
+  /** Añade un nuevo dominio y devuelve los registros DNS a publicar. */
+  async createDomain(
+    projectId: string,
+    payload: CreateDomainPayload,
+  ): Promise<{ domain: DomainWithRecords }> {
+    return this.request(`/api/domains${buildQuery({ projectId })}`, {
+      method: 'POST',
+      body: payload,
+    });
+  }
+
+  /** Obtiene un dominio con sus registros DNS. */
+  async getDomain(domainId: string): Promise<{ domain: DomainWithRecords }> {
+    return this.request(`/api/domains/${domainId}`, { method: 'GET' });
+  }
+
+  /** Re-verifica los registros DNS de un dominio. */
+  async verifyDomain(domainId: string): Promise<DomainVerifyResult> {
+    return this.request(`/api/domains/${domainId}/verify`, { method: 'POST' });
+  }
+
+  /** Elimina un dominio del proyecto. */
+  async deleteDomain(domainId: string): Promise<{ deleted: boolean }> {
+    return this.request(`/api/domains/${domainId}`, { method: 'DELETE' });
+  }
+
+  /** Marca un dominio verificado como remitente por defecto del proyecto. */
+  async setDefaultDomain(domainId: string): Promise<{ domain: string; isDefault: boolean }> {
+    return this.request(`/api/domains/${domainId}/default`, { method: 'POST' });
   }
 
   detectSmtp(email: string) {
     return detectSmtp(email);
   }
 
-  private async request<T>(path: string, body: unknown): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.token}`,
-      },
-      body: JSON.stringify(body),
-    });
-
+  private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const method = options.method ?? 'POST';
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.token}`,
+    };
+    const init: RequestInit = { method, headers };
+    if (options.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(options.body);
+    }
+    const res = await fetch(`${this.baseUrl}${path}`, init);
     const data = await res.json().catch(() => ({}));
-
     if (!res.ok) {
       throw parseApiError(data, res.status);
     }
-
     return data as T;
   }
 }

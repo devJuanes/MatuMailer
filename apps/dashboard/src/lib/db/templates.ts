@@ -57,7 +57,7 @@ export async function listTemplates(projectId: string): Promise<Template[]> {
     .eq('project_id', projectId)
     .order('created_at', { ascending: true });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => normalizeTemplate(row as Record<string, unknown>));
+  return (data ?? []).map((row: Record<string, unknown>) => normalizeTemplate(row));
 }
 
 export async function updateTemplate(

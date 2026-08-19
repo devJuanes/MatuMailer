@@ -10,13 +10,14 @@ Documentación para integrar MatuMailer en tu código (Node.js, Next.js, scripts
 
 ## 1. Qué necesitas antes de programar
 
-| Requisito                 | Dónde se configura                      | Por qué                                                              |
-| ------------------------- | --------------------------------------- | -------------------------------------------------------------------- |
-| Cuenta MatuMailer         | Dashboard → registro                    | Identidad y proyectos                                                |
-| Un **proyecto**           | Dashboard → Proyectos                   | Agrupa SMTP, plantillas y tokens                                     |
-| **SMTP** verificado       | Dashboard → SMTP del proyecto           | Sin esto la API responde `SMTP_NOT_CONFIGURED` o `SMTP_NOT_VERIFIED` |
-| **Token de API**          | Dashboard → proyecto → Tokens API       | Autenticación en `Authorization: Bearer mm_live_...`                 |
-| (Opcional) **Plantillas** | Dashboard → Plantillas o Creador visual | Solo si envías con `template: 'slug'`                                |
+| Requisito                         | Dónde se configura                      | Por qué                                                              |
+| --------------------------------- | --------------------------------------- | -------------------------------------------------------------------- |
+| Cuenta MatuMailer                 | Dashboard → registro                    | Identidad y proyectos                                                |
+| Un **proyecto**                   | Dashboard → Proyectos                   | Agrupa SMTP, plantillas, tokens y dominios                           |
+| **SMTP** verificado               | Dashboard → SMTP del proyecto           | Sin esto la API responde `SMTP_NOT_CONFIGURED` o `SMTP_NOT_VERIFIED` |
+| **Token de API**                  | Dashboard → proyecto → Tokens API       | Autenticación en `Authorization: Bearer mm_live_...`                 |
+| (Opcional) **Dominio verificado** | Dashboard → Dominios                    | Permite `from: 'support@tudominio.com'` con DKIM automático          |
+| (Opcional) **Plantillas**         | Dashboard → Plantillas o Creador visual | Solo si envías con `template: 'slug'`                                |
 
 El token **no** es tu contraseña de login: es un secreto de proyecto que empieza por `mm_live_`.
 
@@ -87,7 +88,50 @@ await mail.send({
 
 ---
 
-## 5. Enviar con plantilla del dashboard
+## 4.5 Dominios personalizados (estilo Resend)
+
+Una vez tu dominio está verificado y tienes DKIM, puedes enviar desde cualquier dirección `@tudominio.com`:
+
+```ts
+await mail.send({
+  to: 'cliente@ejemplo.com',
+  from: 'support@destin.com',
+  fromName: 'Soporte Destin',
+  replyTo: 'hola@destin.com',
+  subject: 'Hola {{name}}',
+  html: '<p>Hola {{name}}</p>',
+  data: { name: 'Juan' },
+});
+```
+
+### Flujo completo desde el SDK
+
+```ts
+// 1. Listar / crear dominios
+const { domains } = await mail.listDomains(projectId);
+
+const { domain } = await mail.createDomain(projectId, {
+  domain: 'destin.com',
+  region: 'sa-east-1', // us-east-1 | sa-east-1 | eu-west-1
+});
+
+// 2. Publica los registros DNS que te imprime la consola / dashboard
+console.log(domain.records);
+
+// 3. Verifica cuando estén propagados
+const result = await mail.verifyDomain(domain.id);
+if (!result.verified) {
+  console.warn('Faltan:', result.missing);
+}
+
+// 4. Marca como default (opcional)
+await mail.setDefaultDomain(domain.id);
+```
+
+Cuando el `from` pertenezca a un dominio verificado, MatuMailer firma DKIM automáticamente con la
+clave privada RSA 2048 que se generó al añadir el dominio.
+
+---
 
 ### Paso A — Crear la plantilla
 

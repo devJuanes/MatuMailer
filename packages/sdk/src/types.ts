@@ -7,6 +7,13 @@ export interface SendEmailPayload {
   text?: string;
   data?: Record<string, unknown>;
   scheduledAt?: string;
+  from?: string;
+  fromName?: string;
+  replyTo?: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
+  headers?: Record<string, string>;
+  tags?: Array<{ name: string; value: string }>;
 }
 
 export interface BulkRecipient {
@@ -21,6 +28,13 @@ export interface BulkSendPayload {
   delayMs?: number;
   scheduledAt?: string;
   campaignName?: string;
+  from?: string;
+  fromName?: string;
+  replyTo?: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
+  headers?: Record<string, string>;
+  tags?: Array<{ name: string; value: string }>;
 }
 
 export interface BulkSendFromJsonPayload {
@@ -76,4 +90,46 @@ export interface SmtpPreset {
   port: number;
   secure: boolean;
   domains: string[];
+}
+
+export interface DomainRecord {
+  id: string;
+  domain: string;
+  status: 'pending' | 'verifying' | 'verified' | 'failed' | 'disabled';
+  region: string;
+  dkim_selector: string;
+  return_path_subdomain: string;
+  last_check_at: string | null;
+  last_verified_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainDnsRecord {
+  id: string;
+  domain_id: string;
+  type: 'TXT' | 'CNAME' | 'MX';
+  host: string;
+  value: string;
+  priority: number | null;
+  status: 'pending' | 'verified' | 'failed';
+  last_check_at: string | null;
+  last_value: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainWithRecords extends DomainRecord {
+  records: DomainDnsRecord[];
+}
+
+export interface CreateDomainPayload {
+  domain: string;
+  region?: 'us-east-1' | 'sa-east-1' | 'eu-west-1';
+}
+
+export interface DomainVerifyResult {
+  domain: DomainWithRecords;
+  verified: boolean;
+  missing: Array<{ type: string; host: string; reason: string }>;
 }

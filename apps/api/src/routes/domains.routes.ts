@@ -1,0 +1,297 @@
+import type { FastifyInstance } from 'fastify';
+import { ZodTypeProvider } from 'fastify-type-provider-zod';
+import {
+  createDomainSchema,
+  updateDomainSchema,
+  buildDkimTxtValue,
+  buildSpfTxtValue,
+  buildDmarcTxtValue,
+  dkimHost,
+  returnPathHost,
+  returnPathTarget,
+  buildMxRecords,
+  generateDkimKeyPair,
+} from '@matumailer/shared';
+import { domainsRepo, projectsRepo } from '@matumailer/database';
+import { z } from 'zod';
+import { encrypt } from '../lib/crypto.js';
+import { checkDomainDns } from '../lib/domain-dns.js';
+
+const RETURN_PATH_PREFIX = 'rp';
+
+function randomReturnPathSubdomain(): string {
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${RETURN_PATH_PREFIX}-${rand}`;
+}
+
+function ensureProjectAccess(
+  project: { user_id: string } | null,
+  userId: string | undefined,
+): project is { user_id: string } {
+  return !!project && !!userId && project.user_id === userId;
+}
+
+export async function domainsRoutes(app: FastifyInstance) {
+  const server = app.withTypeProvider<ZodTypeProvider>();
+
+  server.get(
+    '/',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        querystring: z.object({ projectId: z.string().uuid() }),
+        tags: ['Domains'],
+      },
+    },
+    async (request, reply) => {
+      const project = await projectsRepo.findProjectById(request.query.projectId);
+      if (!ensureProjectAccess(project, request.userId!)) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+      const domains = await domainsRepo.listDomainsByProject(project.id);
+      return { domains };
+    },
+  );
+
+  server.post(
+    '/',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        querystring: z.object({ projectId: z.string().uuid() }),
+        body: createDomainSchema,
+        tags: ['Domains'],
+      },
+    },
+    async (request, reply) => {
+      const project = await projectsRepo.findProjectById(request.query.projectId);
+      if (!ensureProjectAccess(project, request.userId!)) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+
+      const existing = await domainsRepo.findDomainByDomain(project.id, request.body.domain);
+      if (existing) {
+        return reply.status(409).send({
+          error: 'DOMAIN_EXISTS',
+          message: 'Este dominio ya está añadido a este proyecto.',
+          domain: existing,
+        });
+      }
+
+      const keyPair = generateDkimKeyPair();
+      const returnPathSubdomain = randomReturnPathSubdomain();
+
+      const dmarc = buildDmarcTxtValue();
+      const dkimValue = buildDkimTxtValue(keyPair.publicKey);
+      const spfValue = buildSpfTxtValue({ includeRelay: true });
+
+      const records = [
+        {
+          type: 'TXT' as const,
+          host: request.body.domain,
+          value: spfValue,
+          priority: null,
+        },
+        {
+          type: 'TXT' as const,
+          host: dkimHost(request.body.domain, keyPair.selector),
+          value: dkimValue,
+          priority: null,
+        },
+        {
+          type: 'TXT' as const,
+          host: `${dmarc.host}.${request.body.domain}`,
+          value: dmarc.value,
+          priority: null,
+        },
+        {
+          type: 'CNAME' as const,
+          host: returnPathHost(returnPathSubdomain, request.body.domain),
+          value: returnPathTarget(request.body.region),
+          priority: null,
+        },
+        ...buildMxRecords({ region: request.body.region }).map((m) => ({
+          type: 'MX' as const,
+          host: m.host === 'mx' ? `mx.${request.body.domain}` : m.host,
+          value: m.value,
+          priority: m.priority,
+        })),
+      ];
+
+      const encryptedPrivateKey = encrypt(keyPair.privateKeyPem);
+
+      const created = await domainsRepo.createDomain({
+        project_id: project.id,
+        domain: request.body.domain,
+        region: request.body.region,
+        dkim_selector: keyPair.selector,
+        dkim_public_key: keyPair.publicKey,
+        dkim_private_key_encrypted: encryptedPrivateKey,
+        return_path_subdomain: returnPathSubdomain,
+        records,
+      });
+
+      const { dkim_private_key_encrypted: _dkimPrivate, ...publicDomain } = created;
+      return reply.status(201).send({ domain: publicDomain });
+    },
+  );
+
+  server.get(
+    '/:id',
+    {
+      preHandler: [app.authenticate],
+      schema: { params: z.object({ id: z.string().uuid() }), tags: ['Domains'] },
+    },
+    async (request, reply) => {
+      const domain = await domainsRepo.findDomainWithRecords(request.params.id);
+      if (!domain) return reply.status(404).send({ error: 'Not Found' });
+
+      const project = await projectsRepo.findProjectById(domain.project_id);
+      if (!ensureProjectAccess(project, request.userId!)) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+
+      const { dkim_private_key_encrypted: _dkimPrivate, ...publicDomain } = domain;
+      return { domain: publicDomain };
+    },
+  );
+
+  server.patch(
+    '/:id',
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        params: z.object({ id: z.string().uuid() }),
+        body: updateDomainSchema,
+        tags: ['Domains'],
+      },
+    },
+    async (request, reply) => {
+      const domain = await domainsRepo.findDomainById(request.params.id);
+      if (!domain) return reply.status(404).send({ error: 'Not Found' });
+      const project = await projectsRepo.findProjectById(domain.project_id);
+      if (!ensureProjectAccess(project, request.userId!)) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+
+      if (request.body.region && request.body.region !== domain.region) {
+        await domainsRepo.updateDomainStatus(
+          domain.id,
+          domain.status === 'verified' ? 'verifying' : domain.status,
+        );
+      }
+
+      const updated = await domainsRepo.findDomainWithRecords(domain.id);
+      const { dkim_private_key_encrypted: _dkimPrivate, ...publicDomain } = updated!;
+      return { domain: publicDomain };
+    },
+  );
+
+  server.delete(
+    '/:id',
+    {
+      preHandler: [app.authenticate],
+      schema: { params: z.object({ id: z.string().uuid() }), tags: ['Domains'] },
+    },
+    async (request, reply) => {
+      const domain = await domainsRepo.findDomainById(request.params.id);
+      if (!domain) return reply.status(404).send({ error: 'Not Found' });
+      const project = await projectsRepo.findProjectById(domain.project_id);
+      if (!ensureProjectAccess(project, request.userId!)) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+
+      await domainsRepo.deleteDomain(domain.id);
+      return { deleted: true };
+    },
+  );
+
+  server.post(
+    '/:id/verify',
+    {
+      preHandler: [app.authenticate],
+      schema: { params: z.object({ id: z.string().uuid() }), tags: ['Domains'] },
+    },
+    async (request, reply) => {
+      const domain = await domainsRepo.findDomainById(request.params.id);
+      if (!domain) return reply.status(404).send({ error: 'Not Found' });
+      const project = await projectsRepo.findProjectById(domain.project_id);
+      if (!ensureProjectAccess(project, request.userId!)) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+
+      await domainsRepo.updateDomainStatus(domain.id, 'verifying');
+
+      const checks = await checkDomainDns({
+        domain: domain.domain,
+        dkimSelector: domain.dkim_selector,
+        dkimPublicKey: domain.dkim_public_key,
+        mxHost: `mx.${domain.domain}`,
+        mxTarget: `mx.${domain.region}.matumailer.com`,
+        returnPathHost: returnPathHost(domain.return_path_subdomain, domain.domain),
+        returnPathTarget: returnPathTarget(domain.region),
+      });
+
+      const records = await domainsRepo.listRecordsByDomain(domain.id);
+      const updated: typeof records = [];
+
+      for (const record of records) {
+        const match = checks.find(
+          (c) => c.host.toLowerCase() === record.host.toLowerCase() && c.type === record.type,
+        );
+        const found = !!match?.found;
+        await domainsRepo.updateRecordStatus(
+          record.id,
+          found ? 'verified' : 'failed',
+          match?.actual ?? null,
+        );
+        updated.push({
+          ...record,
+          status: found ? 'verified' : 'failed',
+          last_value: match?.actual ?? null,
+        });
+      }
+
+      const requiredTypes = ['TXT', 'TXT', 'TXT', 'CNAME'];
+      const requiredRecords = updated.filter((r) => requiredTypes.includes(r.type));
+      const allRequiredOk = requiredRecords.every((r) => r.status === 'verified');
+
+      const newStatus = allRequiredOk ? 'verified' : 'failed';
+      await domainsRepo.updateDomainStatus(domain.id, newStatus, allRequiredOk);
+
+      const fresh = await domainsRepo.findDomainWithRecords(domain.id);
+      const { dkim_private_key_encrypted: _dkimPrivate, ...publicDomain } = fresh!;
+      return {
+        domain: publicDomain,
+        verified: allRequiredOk,
+        missing: checks
+          .filter((c) => !c.found)
+          .map((c) => ({ type: c.type, host: c.host, reason: c.reason ?? 'not_found' })),
+      };
+    },
+  );
+
+  server.post(
+    '/:id/default',
+    {
+      preHandler: [app.authenticate],
+      schema: { params: z.object({ id: z.string().uuid() }), tags: ['Domains'] },
+    },
+    async (request, reply) => {
+      const domain = await domainsRepo.findDomainById(request.params.id);
+      if (!domain) return reply.status(404).send({ error: 'Not Found' });
+      const project = await projectsRepo.findProjectById(domain.project_id);
+      if (!ensureProjectAccess(project, request.userId!)) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+      if (domain.status !== 'verified') {
+        return reply.status(400).send({
+          error: 'DOMAIN_NOT_VERIFIED',
+          message: 'Solo puedes marcar como default un dominio verificado.',
+        });
+      }
+      await domainsRepo.setProjectDefaultDomain(project.id, domain.id);
+      return { domain: domain.id, isDefault: true };
+    },
+  );
+}

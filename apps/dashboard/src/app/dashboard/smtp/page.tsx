@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,8 +13,9 @@ import { useProjects } from '@/hooks/use-project';
 import { usePlan } from '@/providers/plan-provider';
 import { api } from '@/lib/api';
 import { getSmtpConfigPublic } from '@/lib/db/setup';
+import { listDomains, type DomainRecord } from '@/lib/db/domains';
 import { smtpLimitState, limitMessage } from '@/lib/plan-limits-ui';
-import { Server, ShieldCheck } from 'lucide-react';
+import { Globe, Server, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface DeliverabilityReport {
@@ -45,6 +47,7 @@ export default function SmtpPage() {
     dmarc: { found: boolean; record?: string };
     summary: string;
   } | null>(null);
+  const [domains, setDomains] = useState<DomainRecord[]>([]);
 
   const smtpUsedCount = plan?.usage.smtpConfigs ?? (hasExistingConfig ? 1 : 0);
   const {
@@ -83,6 +86,9 @@ export default function SmtpPage() {
         }
       })
       .catch(() => {});
+    listDomains(activeId)
+      .then(setDomains)
+      .catch(() => setDomains([]));
   }, [activeId]);
 
   function syncUsernameFromFrom() {
@@ -453,6 +459,71 @@ export default function SmtpPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Globe className="h-5 w-5 text-gold" />
+              Dominios vinculados
+            </CardTitle>
+            <Link href="/dashboard/domains">
+              <Button size="sm" variant="secondary">
+                Gestionar dominios
+              </Button>
+            </Link>
+          </div>
+          <CardDescription>
+            Si tu <code className="rounded bg-charcoal/5 px-1">from</code> apunta a un subdominio de
+            uno verificado, los correos se firman con tu DKIM privado y pueden enviarse desde{' '}
+            <code>support@&lt;tudominio&gt;</code>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {domains.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Aún no has añadido dominios personalizados. Crea uno para firmar DKIM y enviar como
+              <code className="mx-1 rounded bg-charcoal/5 px-1">@tudominio.com</code>.
+            </p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {domains.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex items-center justify-between rounded-2xl border border-border/40 bg-white/60 px-4 py-3"
+                >
+                  <div>
+                    <p className="font-medium text-charcoal">{d.domain}</p>
+                    <p className="text-xs text-muted-foreground">
+                      DKIM <code>{d.dkim_selector}</code> · región {d.region}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                      d.status === 'verified' && 'bg-emerald-100 text-emerald-900',
+                      d.status === 'pending' && 'bg-amber-100 text-amber-900',
+                      d.status === 'failed' && 'bg-red-100 text-red-800',
+                      d.status === 'verifying' && 'bg-blue-100 text-blue-900',
+                      d.status === 'disabled' && 'bg-charcoal/10 text-charcoal/70',
+                    )}
+                  >
+                    {d.status === 'verified'
+                      ? 'Verificado'
+                      : d.status === 'pending'
+                        ? 'Pendiente'
+                        : d.status === 'failed'
+                          ? 'Falló'
+                          : d.status === 'verifying'
+                            ? 'Verificando'
+                            : 'Desactivado'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -7,3 +7,4 @@ export * from './smtp-auth';
 export * from './deliverability';
 export * from './recipients';
 export * from './system-templates';
+export * from './dkim';

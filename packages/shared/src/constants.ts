@@ -14,3 +14,9 @@ export const SCHEDULED_EMAIL_STATUS = [
   'failed',
   'cancelled',
 ] as const;
+
+export const DOMAIN_STATUSES = ['pending', 'verifying', 'verified', 'failed', 'disabled'] as const;
+
+export const DNS_RECORD_TYPES = ['TXT', 'CNAME', 'MX'] as const;
+
+export const DOMAIN_REGIONS = ['us-east-1', 'sa-east-1', 'eu-west-1'] as const;

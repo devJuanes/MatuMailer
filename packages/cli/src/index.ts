@@ -3,11 +3,36 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
-import { detectSmtp } from 'matumailer';
+import { MatuMailer, detectSmtp } from 'matumailer';
+
+function loadToken(): string {
+  const token = process.env.MATUMAILER_TOKEN;
+  if (!token) {
+    console.error(
+      chalk.red('\n  Falta MATUMAILER_TOKEN. Configúralo en tu .env o pásalo con --token.\n'),
+    );
+    process.exit(1);
+  }
+  return token;
+}
+
+function loadProjectId(): string {
+  const id = process.env.MATUMAILER_PROJECT_ID;
+  if (!id) {
+    console.error(
+      chalk.red('\n  Falta MATUMAILER_PROJECT_ID (UUID del proyecto). Configúralo en tu .env.\n'),
+    );
+    process.exit(1);
+  }
+  return id;
+}
 
 const program = new Command();
 
-program.name('matumailer').description('MatuMailer CLI — email infrastructure setup').version('1.0.0');
+program
+  .name('matumailer')
+  .description('MatuMailer CLI — email infrastructure setup')
+  .version('1.0.0');
 
 program
   .command('init')
@@ -114,6 +139,99 @@ program
     console.log(`  Host:     ${preset.host}`);
     console.log(`  Port:     ${preset.port}`);
     console.log(`  Secure:   ${preset.secure}\n`);
+  });
+
+const domains = program.command('domains').description('Gestiona dominios de envío');
+
+domains
+  .command('list')
+  .description('Lista los dominios configurados para el proyecto')
+  .option('-u, --base-url <url>', 'API URL', process.env.MATUMAILER_API_URL)
+  .action(async (opts: { baseUrl?: string }) => {
+    const mail = new MatuMailer({ token: loadToken(), baseUrl: opts.baseUrl });
+    const { domains } = await mail.listDomains(loadProjectId());
+    if (!domains.length) {
+      console.log(
+        chalk.yellow('\n  Aún no has añadido dominios. Ejecuta: npx matumailer domains add\n'),
+      );
+      return;
+    }
+    console.log(chalk.cyan.bold('\n  Dominios del proyecto\n'));
+    for (const d of domains) {
+      const statusColor =
+        d.status === 'verified' ? chalk.green : d.status === 'failed' ? chalk.red : chalk.yellow;
+      console.log(`  ${chalk.bold(d.domain)}  ${statusColor('[' + d.status + ']')}  (${d.region})`);
+    }
+    console.log();
+  });
+
+domains
+  .command('add')
+  .description('Añade un nuevo dominio y muestra los registros DNS')
+  .requiredOption('-d, --domain <domain>', 'Dominio (ej. destin.com)')
+  .option('-r, --region <region>', 'Región de envío', 'us-east-1')
+  .option('-u, --base-url <url>', 'API URL', process.env.MATUMAILER_API_URL)
+  .action(async (opts: { domain: string; region: string; baseUrl?: string }) => {
+    const mail = new MatuMailer({ token: loadToken(), baseUrl: opts.baseUrl });
+    const { domain } = await mail.createDomain(loadProjectId(), {
+      domain: opts.domain,
+      region: opts.region as 'us-east-1' | 'sa-east-1' | 'eu-west-1',
+    });
+
+    console.log(chalk.green(`\n  Dominio ${chalk.bold(domain.domain)} creado.\n`));
+    console.log(chalk.cyan('  Registros DNS a publicar en tu proveedor:\n'));
+    for (const r of domain.records) {
+      console.log(`  ${chalk.bold(r.type)}  ${chalk.gray(r.host)}`);
+      console.log(`     ${r.value}`);
+      if (r.priority !== null) console.log(`     priority=${r.priority}`);
+      console.log();
+    }
+    console.log(
+      chalk.cyan(
+        '  Cuando los hayas publicado, ejecuta: npx matumailer domains verify ' + domain.id + '\n',
+      ),
+    );
+  });
+
+domains
+  .command('verify')
+  .description('Re-verifica los registros DNS de un dominio')
+  .requiredOption('--id <id>', 'ID del dominio')
+  .option('-u, --base-url <url>', 'API URL', process.env.MATUMAILER_API_URL)
+  .action(async (opts: { id: string; baseUrl?: string }) => {
+    const mail = new MatuMailer({ token: loadToken(), baseUrl: opts.baseUrl });
+    const result = await mail.verifyDomain(opts.id);
+    if (result.verified) {
+      console.log(chalk.green(`\n  ✓ ${result.domain.domain} verificado y listo para enviar.\n`));
+    } else {
+      console.log(chalk.yellow(`\n  Pendiente. Registros faltantes:\n`));
+      for (const m of result.missing) {
+        console.log(`   - ${m.type} ${m.host}  (${m.reason})`);
+      }
+      console.log();
+    }
+  });
+
+domains
+  .command('remove')
+  .description('Elimina un dominio del proyecto')
+  .requiredOption('--id <id>', 'ID del dominio')
+  .option('-u, --base-url <url>', 'API URL', process.env.MATUMAILER_API_URL)
+  .action(async (opts: { id: string; baseUrl?: string }) => {
+    const mail = new MatuMailer({ token: loadToken(), baseUrl: opts.baseUrl });
+    await mail.deleteDomain(opts.id);
+    console.log(chalk.green(`\n  Dominio ${opts.id} eliminado.\n`));
+  });
+
+domains
+  .command('default')
+  .description('Marca un dominio verificado como default del proyecto')
+  .requiredOption('--id <id>', 'ID del dominio')
+  .option('-u, --base-url <url>', 'API URL', process.env.MATUMAILER_API_URL)
+  .action(async (opts: { id: string; baseUrl?: string }) => {
+    const mail = new MatuMailer({ token: loadToken(), baseUrl: opts.baseUrl });
+    await mail.setDefaultDomain(opts.id);
+    console.log(chalk.green(`\n  ${opts.id} ahora es el dominio por defecto.\n`));
   });
 
 program.parse();
