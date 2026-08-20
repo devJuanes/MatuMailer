@@ -27,7 +27,20 @@ import { signDkim } from '../lib/dkim-sign.js';
 // como send-only. Node.js firma DKIM por cada mensaje usando la clave privada
 // del dominio verificado correspondiente. No hay SMTP propio del usuario:
 // cada proyecto envía desde su(s) dominio(s) verificado(s).
+//
+// Modo local (sin Postfix): define `MATUMAILER_TRANSPORT=console` y el API
+// usará nodemailer `jsonTransport` (no envía, solo loguea el mensaje). El
+// resto del flujo (logs, status, DKIM headers, alias check) sigue funcionando
+// end-to-end para que puedas probar sin un MTA.
 // ─────────────────────────────────────────────────────────────────────────────
+
+type TransportMode = 'smtp' | 'console';
+
+function resolveTransportMode(): TransportMode {
+  const raw = (process.env.MATUMAILER_TRANSPORT ?? 'smtp').trim().toLowerCase();
+  if (raw === 'console' || raw === 'stub' || raw === 'json') return 'console';
+  return 'smtp';
+}
 
 interface ResolvedFrom {
   fromEmail: string;
@@ -41,6 +54,8 @@ interface OutboundTransport {
   dkimDomain: string;
   dkimSelector: string;
   dkimPrivateKey: string;
+  /** Cuando es `console`, el `dkimPrivateKey` está vacía y el correo NO se envía. */
+  mode: TransportMode;
 }
 
 /** Crea el transporte al Postfix local (sin TLS + sin AUTH; solo localhost). */
@@ -53,6 +68,16 @@ function buildLocalTransport(): Transporter {
     connectionTimeout: 10_000,
     greetingTimeout: 5_000,
   });
+}
+
+/**
+ * Transporte "console" para desarrollo local: usa `jsonTransport` de
+ * nodemailer (no envía nada) y loguea el mensaje en stdout. El envío se
+ * considera exitoso en el log de email_logs para que el flow de UI funcione
+ * end-to-end (status=sent, message_id, etc).
+ */
+function buildConsoleTransport(): Transporter {
+  return nodemailer.createTransport({ jsonTransport: true });
 }
 
 /**
@@ -123,12 +148,24 @@ async function resolveFromAndDomain(
 }
 
 async function getOutboundTransport(domain: Domain): Promise<OutboundTransport> {
+  const mode = resolveTransportMode();
+  if (mode === 'console') {
+    // En modo `console` no desciframos DKIM (no se firma ni se envía).
+    return {
+      transport: buildConsoleTransport(),
+      dkimDomain: domain.domain,
+      dkimSelector: domain.dkim_selector,
+      dkimPrivateKey: '',
+      mode,
+    };
+  }
   const privateKey = decrypt(domain.dkim_private_key_encrypted);
   return {
     transport: buildLocalTransport(),
     dkimDomain: domain.domain,
     dkimSelector: domain.dkim_selector,
     dkimPrivateKey: privateKey,
+    mode,
   };
 }
 
@@ -374,29 +411,42 @@ async function sendEmailToOne(
 
     let dkimSignatureHeader: string | undefined;
 
-    try {
-      const mimeMessage = buildMimeMessage({
-        from: fromEmail,
-        fromName,
-        to,
-        subject: prepared.subject,
-        text: prepared.text,
-        html: prepared.html,
-        replyTo: replyTo ?? null,
-        cc,
-        bcc,
-        headers: extraHeaders,
-        messageId,
-        date: new Date().toUTCString(),
-        listUnsubscribe,
-      });
-      dkimSignatureHeader = signDkim(mimeMessage, {
-        selector: outbound.dkimSelector,
-        domain: outbound.dkimDomain,
-        privateKey: outbound.dkimPrivateKey,
-      });
-    } catch (dkimErr) {
-      console.warn('[email.service] DKIM signing failed:', dkimErr);
+    // En modo `console` no firmamos DKIM (no hay entrega real) y omitimos el
+    // build del MIME message completo (que solo se usa para firmar).
+    if (outbound.mode !== 'console')
+      try {
+        const mimeMessage = buildMimeMessage({
+          from: fromEmail,
+          fromName,
+          to,
+          subject: prepared.subject,
+          text: prepared.text,
+          html: prepared.html,
+          replyTo: replyTo ?? null,
+          cc,
+          bcc,
+          headers: extraHeaders,
+          messageId,
+          date: new Date().toUTCString(),
+          listUnsubscribe,
+        });
+        dkimSignatureHeader = signDkim(mimeMessage, {
+          selector: outbound.dkimSelector,
+          domain: outbound.dkimDomain,
+          privateKey: outbound.dkimPrivateKey,
+        });
+      } catch (dkimErr) {
+        console.warn('[email.service] DKIM signing failed:', dkimErr);
+      }
+
+    if (outbound.mode === 'console') {
+      console.log(`\n[email.service:console] ────────────── EMAIL SIMULADO ──────────────`);
+      console.log(`[email.service:console] from:    ${formatFromAddress(fromEmail, fromName)}`);
+      console.log(`[email.service:console] to:      ${to}`);
+      console.log(`[email.service:console] subject: ${prepared.subject}`);
+      console.log(`[email.service:console] replyTo: ${replyTo ?? '(none)'}`);
+      console.log(`[email.service:console] headers: ${Object.keys(extraHeaders).length} items`);
+      console.log(`[email.service:console] ─────────────────────────────────────────────\n`);
     }
 
     if (dkimSignatureHeader) {
