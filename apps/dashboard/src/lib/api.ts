@@ -27,6 +27,8 @@ function resolveApiBase(): string {
 
 const API_URL = resolveApiBase();
 
+export { API_URL };
+
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   const legacy = localStorage.getItem('matumailer_token');
