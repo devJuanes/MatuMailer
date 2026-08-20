@@ -159,7 +159,7 @@ export interface EmailEvent {
   id: string;
   email_log_id: string;
   project_id: string;
-  type: 'open' | 'click';
+  type: 'open' | 'click' | 'unsubscribe';
   url: string | null;
   user_agent: string | null;
   created_at: string;

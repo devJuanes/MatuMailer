@@ -4,6 +4,12 @@ import nodemailer, { type Transporter } from 'nodemailer';
  * Capa de entrega. MatuMailer no usa SMTP del cliente: el proveedor es interno
  * (Postfix local, consola de desarrollo, o un ESP futuro).
  */
+export interface EmailDkimConfig {
+  domainName: string;
+  keySelector: string;
+  privateKey: string;
+}
+
 export interface EmailMessage {
   from: string;
   to: string;
@@ -14,6 +20,10 @@ export interface EmailMessage {
   cc?: string | string[];
   bcc?: string | string[];
   headers?: Record<string, string>;
+  /** MAIL FROM / Return-Path (alineación SPF/DMARC). */
+  envelopeFrom?: string;
+  /** Firma DKIM del mensaje exacto que se envía (nodemailer). */
+  dkim?: EmailDkimConfig;
 }
 
 export interface EmailResult {
@@ -36,7 +46,7 @@ export function resolvePlatformTransportMode(): PlatformTransportMode {
   return 'postfix';
 }
 
-function buildPostfixTransport(): Transporter {
+function buildPostfixTransport(dkim?: EmailDkimConfig): Transporter {
   const host = process.env.MATUMAILER_RELAY_HOST || process.env.SMTP_HOST || '127.0.0.1';
   const port = process.env.MATUMAILER_RELAY_PORT
     ? Number(process.env.MATUMAILER_RELAY_PORT)
@@ -55,6 +65,19 @@ function buildPostfixTransport(): Transporter {
     tls: { rejectUnauthorized: false },
     connectionTimeout: 10_000,
     greetingTimeout: 5_000,
+    ...(dkim
+      ? {
+          dkim: {
+            domainName: dkim.domainName,
+            keySelector: dkim.keySelector,
+            privateKey: dkim.privateKey,
+            // Cabeceras que Gmail/Yahoo esperan firmadas para buena reputación.
+            headerFieldNames:
+              'from:sender:reply-to:subject:date:message-id:to:cc:mime-version:content-type:content-transfer-encoding:list-unsubscribe:list-unsubscribe-post:feedback-id',
+            skipFields: 'bcc:dkim-signature',
+          },
+        }
+      : {}),
   });
 }
 
@@ -67,6 +90,7 @@ export class ConsoleEmailProvider implements EmailProvider {
     console.log(`[email-provider:console] to:      ${message.to}`);
     console.log(`[email-provider:console] subject: ${message.subject}`);
     console.log(`[email-provider:console] replyTo: ${message.replyTo ?? '(none)'}`);
+    console.log(`[email-provider:console] envelope:${message.envelopeFrom ?? '(default)'}`);
     console.log(`[email-provider:console] ──────────────────────────────────\n`);
     return { accepted: true, provider: this.name };
   }
@@ -76,7 +100,7 @@ export class PostfixEmailProvider implements EmailProvider {
   readonly name = 'postfix';
 
   async send(message: EmailMessage): Promise<EmailResult> {
-    const transport = buildPostfixTransport();
+    const transport = buildPostfixTransport(message.dkim);
     try {
       const info = await transport.sendMail({
         from: message.from,
@@ -89,7 +113,10 @@ export class PostfixEmailProvider implements EmailProvider {
         text: message.text,
         headers: message.headers,
         encoding: 'utf-8',
-        priority: 'normal',
+        // Sin Priority/Importance altos: esos headers aumentan spam score.
+        ...(message.envelopeFrom
+          ? { envelope: { from: message.envelopeFrom, to: message.to } }
+          : {}),
       });
       return {
         accepted: true,

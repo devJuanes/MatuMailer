@@ -83,6 +83,12 @@ export async function remove(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+export async function markUnsubscribed(id: string): Promise<Contact> {
+  return updateOne<Contact>('contacts', [{ column: 'id', value: id }], {
+    unsubscribed_at: new Date().toISOString(),
+  });
+}
+
 export async function listByGroup(groupId: string): Promise<Contact[]> {
   const db = getMatuDb();
   const { data: members, error } = await db

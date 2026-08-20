@@ -9,13 +9,14 @@ import {
 } from '@matumailer/database';
 import { decrypt } from '../lib/crypto.js';
 import {
+  buildEnvelopeFrom,
   buildMessageId,
   formatFromAddress,
   prepareOutboundMail,
+  publicApiBase,
 } from '../lib/deliverability-mail.js';
 import { applyBranding, injectTracking } from '../lib/branding-render.js';
 import { humanizeEmailError } from '../lib/humanize-error.js';
-import { signDkim } from '../lib/dkim-sign.js';
 import { createEmailProvider, type EmailProvider } from '../providers/email-provider.js';
 import { resolveSendingIdentity } from './sending-identity.js';
 
@@ -80,10 +81,6 @@ async function getOutboundTransport(domain: Domain): Promise<OutboundTransport> 
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PREPARACIÓN DE MENSAJES
-// ─────────────────────────────────────────────────────────────────────────────
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -92,55 +89,6 @@ function normalizeAddressList(value: string | string[] | undefined): string | un
   if (!value) return undefined;
   return Array.isArray(value) ? value.join(', ') : value;
 }
-
-/**
- * Construye el mensaje MIME crudo para firmar DKIM. Lo usamos antes de pasar
- * por nodemailer para que la firma cubra exactamente los headers que verá el
- * receptor. (Nodemailer lo reordena ligeramente si lo construimos con su API.)
- */
-function buildMimeMessage(params: {
-  from: string;
-  fromName: string | null;
-  to: string;
-  subject: string;
-  text: string;
-  html: string;
-  replyTo: string | null;
-  cc?: string;
-  bcc?: string;
-  headers?: Record<string, string>;
-  messageId: string;
-  date: string;
-  listUnsubscribe?: string | null;
-}): string {
-  const fromHeader = params.fromName
-    ? `From: "${params.fromName.replace(/"/g, "'")}" <${params.from}>\r\n`
-    : `From: ${params.from}\r\n`;
-  const headers: string[] = [
-    fromHeader,
-    `To: ${params.to}\r\n`,
-    params.replyTo ? `Reply-To: ${params.replyTo}\r\n` : '',
-    params.cc ? `Cc: ${params.cc}\r\n` : '',
-    params.bcc ? `Bcc: ${params.bcc}\r\n` : '',
-    `Subject: ${params.subject}\r\n`,
-    `Date: ${params.date}\r\n`,
-    `Message-ID: ${params.messageId}\r\n`,
-    `MIME-Version: 1.0\r\n`,
-    `Content-Type: text/html; charset=utf-8\r\n`,
-    `Content-Transfer-Encoding: quoted-printable\r\n`,
-    params.listUnsubscribe ? `List-Unsubscribe: ${params.listUnsubscribe}\r\n` : '',
-    `List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n`,
-  ];
-  if (params.headers) {
-    for (const [k, v] of Object.entries(params.headers)) headers.push(`${k}: ${v}\r\n`);
-  }
-  return headers.join('') + `\r\n${params.html}`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ENVÍO PRINCIPAL
-// ─────────────────────────────────────────────────────────────────────────────
-
 export interface SendEmailOptions {
   projectId: string;
   to: string | string[];
@@ -170,14 +118,6 @@ interface ResolvedMailContent {
   html: string;
   text?: string;
   templateSlug: string | null;
-}
-
-function publicApiBase(): string {
-  return (
-    process.env.PUBLIC_API_URL ||
-    process.env.MATUMAILERER_URL ||
-    `http://localhost:${process.env.PORT ?? 4001}`
-  ).replace(/\/$/, '');
 }
 
 async function resolveMailContent(
@@ -248,8 +188,6 @@ async function sendEmailToOne(
   const outbound = await getOutboundTransport(resolved.domain);
 
   const replyTo = normalizeAddressList(overrides.replyTo ?? resolved.replyTo ?? undefined);
-  const cc = normalizeAddressList(overrides.cc);
-  const bcc = normalizeAddressList(overrides.bcc);
 
   const log = await emailLogsRepo.createEmailLog({
     project_id: projectId,
@@ -293,14 +231,12 @@ async function sendEmailToOne(
       fromEmail,
       fromName,
       logId: log.id,
+      trackingToken,
+      projectId,
+      stream: campaignId ? 'bulk' : 'transactional',
     });
 
     const messageId = buildMessageId(fromEmail);
-
-    const listUnsubscribe =
-      overrides.replyTo || fromEmail
-        ? `<mailto:${resolved.replyTo ?? fromEmail}?subject=unsubscribe>`
-        : null;
 
     const extraHeaders: Record<string, string> = {
       ...prepared.headers,
@@ -309,52 +245,9 @@ async function sendEmailToOne(
 
     if (overrides.headers) Object.assign(extraHeaders, overrides.headers);
 
-    // Cabeceras estándar de entregabilidad
-    extraHeaders['X-Mailer'] = 'MatuMailer';
     if (overrides.tags?.length) {
       for (const tag of overrides.tags) {
         extraHeaders[`X-MatuMailer-Tag-${tag.name}`] = tag.value;
-      }
-    }
-
-    let dkimSignatureHeader: string | undefined;
-
-    // En modo `console` no firmamos DKIM (no hay entrega real) y omitimos el
-    // build del MIME message completo (que solo se usa para firmar).
-    if (outbound.provider.name !== 'console')
-      try {
-        const mimeMessage = buildMimeMessage({
-          from: fromEmail,
-          fromName,
-          to,
-          subject: prepared.subject,
-          text: prepared.text,
-          html: prepared.html,
-          replyTo: replyTo ?? null,
-          cc,
-          bcc,
-          headers: extraHeaders,
-          messageId,
-          date: new Date().toUTCString(),
-          listUnsubscribe,
-        });
-        dkimSignatureHeader = signDkim(mimeMessage, {
-          selector: outbound.dkimSelector,
-          domain: outbound.dkimDomain,
-          privateKey: outbound.dkimPrivateKey,
-        });
-      } catch (dkimErr) {
-        console.warn('[email.service] DKIM signing failed:', dkimErr);
-      }
-
-    if (dkimSignatureHeader) {
-      const lines = dkimSignatureHeader.split(/\r?\n/);
-      for (const line of lines) {
-        const idx = line.indexOf(':');
-        if (idx === -1) continue;
-        const name = line.slice(0, idx).trim();
-        const value = line.slice(idx + 1).trim();
-        if (name && value && !extraHeaders[name]) extraHeaders[name] = value;
       }
     }
 
@@ -368,6 +261,15 @@ async function sendEmailToOne(
       html: prepared.html,
       text: prepared.text,
       headers: extraHeaders,
+      envelopeFrom: buildEnvelopeFrom(resolved.domain.domain, log.id),
+      dkim:
+        outbound.provider.name === 'console' || !outbound.dkimPrivateKey
+          ? undefined
+          : {
+              domainName: outbound.dkimDomain,
+              keySelector: outbound.dkimSelector,
+              privateKey: outbound.dkimPrivateKey,
+            },
     });
 
     await emailLogsRepo.updateEmailLogStatus(log.id, 'sent', {
@@ -379,7 +281,13 @@ async function sendEmailToOne(
       await campaignsRepo.incrementCounts(campaignId, { sent: 1 });
     }
 
-    return { id: log.id, status: 'sent', from: fromEmail, aliasId: resolved.aliasId, domainId: resolved.domain.id };
+    return {
+      id: log.id,
+      status: 'sent',
+      from: fromEmail,
+      aliasId: resolved.aliasId,
+      domainId: resolved.domain.id,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     const stack = err instanceof Error ? err.stack : undefined;
@@ -402,9 +310,7 @@ async function sendEmailToOne(
   }
 }
 
-export async function sendEmail(
-  options: SendEmailOptions,
-): Promise<SendResult> {
+export async function sendEmail(options: SendEmailOptions): Promise<SendResult> {
   const recipients = Array.isArray(options.to) ? options.to : [options.to];
 
   if (recipients.length === 1) {

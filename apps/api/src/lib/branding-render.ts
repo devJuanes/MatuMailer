@@ -39,10 +39,23 @@ export function injectTracking(html: string, trackingToken: string, publicBaseUr
   const pixel = `<img src="${base}/t/o/${trackingToken}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0" />`;
 
   let out = html.replace(/href=["'](https?:\/\/[^"']+)["']/gi, (_m, url: string) => {
-    if (url.includes('/t/')) return `href="${url}"`;
+    // No reescribir tracking, unsubscribe ni enlaces de privacidad.
+    if (url.includes('/t/') || /unsubscribe|opt[-_]?out|privacy/i.test(url)) {
+      return `href="${url}"`;
+    }
     const tracked = `${base}/t/c/${trackingToken}?u=${encodeURIComponent(url)}`;
     return `href="${tracked}"`;
   });
+
+  const unsubUrl = `${base}/t/u/${trackingToken}`;
+  if (!/\/t\/u\//i.test(out)) {
+    const footer = `<p style="margin-top:24px;font-size:12px;color:#666;font-family:sans-serif">Si no deseas recibir estos correos, <a href="${unsubUrl}">cancela la suscripción</a>.</p>`;
+    if (out.includes('</body>')) {
+      out = out.replace('</body>', `${footer}</body>`);
+    } else {
+      out = `${out}${footer}`;
+    }
+  }
 
   if (out.includes('</body>')) {
     out = out.replace('</body>', `${pixel}</body>`);

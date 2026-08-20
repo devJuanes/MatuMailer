@@ -2,10 +2,10 @@
 
 Dominio: **matucatalogo.com**
 
-| Qué | Subdominio | Puerto interno |
-|-----|------------|----------------|
-| API (backend) | `api.matucatalogo.com` | 4001 |
-| Dashboard (frontend) | `mail.matucatalogo.com` | 3015 |
+| Qué                  | Subdominio              | Puerto interno |
+| -------------------- | ----------------------- | -------------- |
+| API (backend)        | `api.matucatalogo.com`  | 4001           |
+| Dashboard (frontend) | `mail.matucatalogo.com` | 3015           |
 
 ---
 
@@ -55,6 +55,7 @@ SCHEDULER_INTERVAL_MS=30000
 MATUMAILER_TRANSPORT=postfix
 MATUMAILER_RELAY_HOST=127.0.0.1
 MATUMAILER_RELAY_PORT=25
+PUBLIC_API_URL=https://matumailer.matubyte.com
 ```
 
 Dashboard (obligatorio **antes** del build):
@@ -162,12 +163,12 @@ pm2 save
 
 ### 3.7 Comandos útiles
 
-| Comando | Para qué |
-|---------|----------|
-| `pm2 list` | Ver estado |
-| `pm2 logs` | Ver errores en vivo |
-| `pm2 restart all` | Tras `git pull` y nuevo build |
-| `pm2 stop matumailer-api` | Parar solo la API |
+| Comando                   | Para qué                      |
+| ------------------------- | ----------------------------- |
+| `pm2 list`                | Ver estado                    |
+| `pm2 logs`                | Ver errores en vivo           |
+| `pm2 restart all`         | Tras `git pull` y nuevo build |
+| `pm2 stop matumailer-api` | Parar solo la API             |
 
 ---
 
@@ -217,11 +218,11 @@ Renovación automática suele quedar ya configurada.
 
 ## Paso 6 — Probar en el navegador
 
-| URL | Esperado |
-|-----|----------|
-| https://api.matucatalogo.com/health | JSON ok |
-| https://api.matucatalogo.com/docs | Swagger |
-| https://mail.matucatalogo.com | Login MatuMailer |
+| URL                                 | Esperado         |
+| ----------------------------------- | ---------------- |
+| https://api.matucatalogo.com/health | JSON ok          |
+| https://api.matucatalogo.com/docs   | Swagger          |
+| https://mail.matucatalogo.com       | Login MatuMailer |
 
 Regístrate, verifica un dominio por DNS, crea un alias, genera token.
 

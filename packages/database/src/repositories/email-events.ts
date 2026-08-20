@@ -5,7 +5,7 @@ import { insertOne } from '../helpers';
 export async function create(input: {
   email_log_id: string;
   project_id: string;
-  type: 'open' | 'click';
+  type: 'open' | 'click' | 'unsubscribe';
   url?: string | null;
   user_agent?: string | null;
 }): Promise<EmailEvent> {
@@ -50,5 +50,5 @@ export async function findLogByTrackingToken(token: string) {
     .eq('tracking_token', token)
     .maybeSingle();
   if (error || !data) return null;
-  return data as { id: string; project_id: string; tracking_token: string };
+  return data as { id: string; project_id: string; tracking_token: string; to_email: string };
 }

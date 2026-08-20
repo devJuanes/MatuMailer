@@ -26,6 +26,9 @@ const DEFAULT_SIGNED_HEADERS = [
   'content-type',
   'content-transfer-encoding',
   'reply-to',
+  'list-unsubscribe',
+  'list-unsubscribe-post',
+  'feedback-id',
   'in-reply-to',
   'references',
 ];
@@ -102,7 +105,8 @@ export function signDkim(message: string, opts: DkimSignOptions): string {
   const { headers } = splitHeaders(message);
   const signedHeaders = opts.headers ?? DEFAULT_SIGNED_HEADERS;
   const timestamp = opts.timestamp ?? Math.floor(Date.now() / 1000);
-  const expires = timestamp + (opts.expirationSeconds ?? 300);
+  // Sin expiración corta: 7 días. Una x= de 5 min invalidaba firmas en cola/deferral.
+  const expires = timestamp + (opts.expirationSeconds ?? 7 * 24 * 3600);
 
   const presentHeaders = signedHeaders.filter((h) => headers.some((hd) => hd.name === h));
   if (!presentHeaders.includes('from')) {
@@ -121,9 +125,10 @@ export function signDkim(message: string, opts: DkimSignOptions): string {
     `t=${timestamp}; x=${expires}; h=${presentHeaders.join(':')}; ` +
     `bh=${bodyHash}; b=`;
 
+  // RFC 6376: headers firmados primero, luego DKIM-Signature con b= vacío.
   const signedData = [
-    canonicalizeHeader('dkim-signature', dkimHeaderValue, 'relaxed'),
     canonicalizedHeaders,
+    canonicalizeHeader('dkim-signature', dkimHeaderValue, 'relaxed'),
   ].join('\r\n');
 
   const signer = createSign('RSA-SHA256');
@@ -149,12 +154,15 @@ export function buildDkimHeaderValue(opts: {
   expirationSeconds?: number;
 }): string {
   const ts = opts.timestamp ?? Math.floor(Date.now() / 1000);
-  const exp = ts + (opts.expirationSeconds ?? 300);
+  const exp = ts + (opts.expirationSeconds ?? 7 * 24 * 3600);
   const baseTag =
     `v=1; a=rsa-sha256; c=relaxed/relaxed; d=${opts.domain}; s=${opts.selector}; ` +
     `t=${ts}; x=${exp}; h=${opts.signedHeaders.join(':')}; bh=${opts.bodyHash}; b=`;
   const signer = createSign('RSA-SHA256');
-  signer.update(opts.canonicalizedHeaders);
+  // Headers canónicos primero, luego dkim-signature (RFC 6376).
+  signer.update(
+    `${opts.canonicalizedHeaders}\r\n${canonicalizeHeader('dkim-signature', baseTag, 'relaxed')}`,
+  );
   signer.end();
   return baseTag + signer.sign(opts.privateKey).toString('base64');
 }
