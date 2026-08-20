@@ -59,7 +59,7 @@ export default function RegisterPageClient() {
       if (tier === 'free') {
         const { signUp } = await import('@/lib/auth-matudb');
         await signUp(email, password, name);
-        router.push('/dashboard');
+        router.push('/hub');
         return;
       }
 

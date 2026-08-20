@@ -23,7 +23,10 @@ export function useProjects() {
         const id = saved && projects.find((p) => p.id === saved)?.id;
         setActiveId(id ?? projects[0]?.id ?? null);
       })
-      .catch(console.error)
+      .catch(() => {
+        setProjects([]);
+        setActiveId(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 

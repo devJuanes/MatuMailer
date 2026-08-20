@@ -18,6 +18,7 @@
     "db:seed": "tsx src/seed.ts",
     "db:migrate:subscriptions": "tsx src/migrate-subscriptions.ts",
     "db:migrate:pending-signups": "tsx src/migrate-pending-signups.ts",
+    "db:migrate:inbound": "tsx src/migrate-inbound.ts",
     "lint": "eslint src"
   },
   "dependencies": {

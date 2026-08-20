@@ -15,10 +15,12 @@ function resolveApiBase(): string {
 
   // Evita que el dashboard termine apuntándose a sí mismo (bug clásico).
   if (isBrowser && raw.includes(window.location.host) && raw !== FALLBACK_PROD_API_URL) {
-    console.error(
-      `[matumailer] NEXT_PUBLIC_API_URL="${raw}" apunta al propio dashboard. ` +
-        `Corrígelo a "${FALLBACK_PROD_API_URL}" antes de hacer build de producción.`,
-    );
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[matumailer] NEXT_PUBLIC_API_URL="${raw}" apunta al propio dashboard. ` +
+          `Usando "${FALLBACK_PROD_API_URL}".`,
+      );
+    }
     return FALLBACK_PROD_API_URL;
   }
 

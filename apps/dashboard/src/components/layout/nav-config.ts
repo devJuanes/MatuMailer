@@ -1,4 +1,5 @@
 import {
+  ArrowLeftRight,
   AtSign,
   BarChart3,
   BookOpen,
@@ -7,6 +8,7 @@ import {
   FileText,
   FolderKanban,
   Globe,
+  Inbox,
   LayoutDashboard,
   Mail,
   Palette,
@@ -27,6 +29,8 @@ export type DashboardNavItem = {
 
 export const dashboardNav: DashboardNavItem[] = [
   { href: '/dashboard', label: 'Resumen', icon: LayoutDashboard },
+  { href: '/mail', label: 'Bandeja', icon: Inbox },
+  { href: '/hub', label: 'Cambiar modo', icon: ArrowLeftRight },
   { href: '/dashboard/projects', label: 'Proyectos', icon: FolderKanban },
   { href: '/dashboard/domains', label: 'Dominios', icon: Globe },
   { href: '/dashboard/aliases', label: 'Aliases', icon: AtSign },

@@ -26,7 +26,7 @@ export default function LoginPage() {
     try {
       const { signInWithPassword } = await import('@/lib/auth-matudb');
       await signInWithPassword(String(form.get('email')), String(form.get('password')));
-      router.push('/dashboard');
+      router.push('/hub');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión');
     } finally {

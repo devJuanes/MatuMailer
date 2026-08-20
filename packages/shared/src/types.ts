@@ -165,6 +165,31 @@ export interface EmailEvent {
   created_at: string;
 }
 
+export interface InboundMessage {
+  id: string;
+  project_id: string;
+  domain_id: string | null;
+  alias_id: string | null;
+  message_id: string | null;
+  from_email: string;
+  from_name: string | null;
+  to_email: string;
+  subject: string;
+  preview: string | null;
+  text_body: string | null;
+  html_body: string | null;
+  folder: string;
+  category: string;
+  starred: boolean;
+  pinned: boolean;
+  unread: boolean;
+  has_attachment: boolean;
+  raw_headers: Record<string, unknown> | null;
+  received_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Session {
   id: string;
   user_id: string;

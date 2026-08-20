@@ -1,0 +1,45 @@
+/* Matu Mail inbox theme — scoped under .mail-shell (Tailwind v3 compatible) */
+
+.mail-shell {
+  --mail-bg: #0c0c0e;
+  --mail-panel: #141416;
+  --mail-elevated: #1a1a1e;
+  --mail-hover: #222226;
+  --mail-border: #2a2a2e;
+  --mail-muted: #8a8a93;
+  --mail-accent: #3b82f6;
+  height: 100%;
+  min-height: 100dvh;
+  background: var(--mail-bg);
+  color: #f4f4f5;
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.mail-shell ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.mail-shell ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mail-shell ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 999px;
+}
+
+@keyframes mail-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mail-shell .animate-fade-in {
+  animation: mail-fade-in 0.2s ease-out;
+}
