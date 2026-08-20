@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  Sparkles,
   SlidersHorizontal,
   Star,
   Pin,
@@ -19,11 +18,9 @@ interface MessageListProps {
   emails: InboxEmail[];
   selectedId: string | null;
   filter: FilterTab;
-  smartResponses: boolean;
   pinnedOpen: boolean;
   onSelect: (id: string) => void;
   onFilterChange: (filter: FilterTab) => void;
-  onToggleSmart: () => void;
   onToggleStar: (id: string) => void;
   onTogglePin: (id: string) => void;
   onTogglePinnedSection: () => void;
@@ -41,11 +38,9 @@ export function MessageList({
   emails,
   selectedId,
   filter,
-  smartResponses,
   pinnedOpen,
   onSelect,
   onFilterChange,
-  onToggleSmart,
   onToggleStar,
   onTogglePin,
   onTogglePinnedSection,
@@ -85,7 +80,7 @@ export function MessageList({
               onToggleStar(email.id);
             }}
             className="rounded p-0.5 hover:bg-zinc-700"
-            aria-label="Star"
+            aria-label="Favorito"
           >
             <Star
               size={14}
@@ -103,7 +98,7 @@ export function MessageList({
               onTogglePin(email.id);
             }}
             className="rounded p-0.5 hover:bg-zinc-700"
-            aria-label="Pin"
+            aria-label="Fijar"
           >
             <Pin
               size={13}
@@ -161,7 +156,7 @@ export function MessageList({
     );
   };
 
-  const section = (title: string, items: InboxEmail[], collapsible = false) => {
+  const section = (sectionTitle: string, items: InboxEmail[], collapsible = false) => {
     if (items.length === 0) return null;
     return (
       <div className="mb-2">
@@ -171,7 +166,7 @@ export function MessageList({
             onClick={collapsible ? onTogglePinnedSection : undefined}
             className="flex items-center gap-1 text-xs font-semibold tracking-wide text-zinc-400 uppercase"
           >
-            {title}
+            {sectionTitle}
             {collapsible && (
               <ChevronDown
                 size={14}
@@ -198,22 +193,13 @@ export function MessageList({
     <section className="flex h-full w-[380px] shrink-0 flex-col border-r border-zinc-800/80 bg-[#141416]">
       <div className="flex items-center justify-between px-4 pt-5 pb-3">
         <h1 className="text-lg font-semibold text-white">{title}</h1>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-            aria-label="AI"
-          >
-            <Sparkles size={18} />
-          </button>
-          <button
-            type="button"
-            className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-            aria-label="Filter"
-          >
-            <SlidersHorizontal size={18} />
-          </button>
-        </div>
+        <button
+          type="button"
+          className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+          aria-label="Filtros"
+        >
+          <SlidersHorizontal size={18} />
+        </button>
       </div>
 
       <div className="flex items-center gap-1.5 overflow-x-auto px-4 pb-3">
@@ -234,42 +220,17 @@ export function MessageList({
         <button
           type="button"
           className="rounded-full bg-zinc-800 p-1.5 text-zinc-400 hover:bg-zinc-700"
-          aria-label="More filters"
+          aria-label="Más filtros"
         >
           <ChevronRight size={14} />
         </button>
       </div>
 
-      <div className="px-4 pb-3">
-        <div className="flex items-center gap-3 rounded-2xl border border-amber-900/30 bg-[#2a2118] px-4 py-3">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400">
-            <Sparkles size={18} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-amber-50">Respuestas inteligentes</p>
-            <p className="text-xs text-amber-200/50">Simplify your process with AI</p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={smartResponses}
-            onClick={onToggleSmart}
-            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-              smartResponses ? 'bg-amber-500' : 'bg-zinc-700'
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform ${
-                smartResponses ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
-      </div>
-
       <div className="flex-1 overflow-y-auto px-2 pb-4">
         {emails.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-zinc-500">No hay mensajes aquí.</p>
+          <p className="px-4 py-8 text-center text-sm text-zinc-500">
+            No hay mensajes reales aquí todavía.
+          </p>
         ) : (
           <>
             {section('Fijados', pinned, true)}

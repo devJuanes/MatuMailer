@@ -171,6 +171,39 @@ export async function inboundRoutes(app: FastifyInstance) {
     },
   );
 
+  server.post(
+    '/purge-demo',
+    {
+      preHandler: [app.authenticateApiToken],
+      schema: {
+        querystring: z.object({ projectId: z.string().uuid().optional() }),
+        tags: ['Inbound'],
+      },
+    },
+    async (request, reply) => {
+      let projectId = request.projectId ?? request.query.projectId ?? null;
+      if (!projectId && request.userId) {
+        const projects = await projectsRepo.findProjectsByUserId(request.userId);
+        if (projects.length === 1) projectId = projects[0].id;
+      }
+      if (!projectId) {
+        return reply.status(400).send({ error: 'PROJECT_REQUIRED' });
+      }
+
+      const project = await projectsRepo.findProjectById(projectId);
+      if (!project) return reply.status(404).send({ error: 'Not Found' });
+      if (request.userId && project.user_id !== request.userId) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+      if (request.projectId && request.projectId !== projectId) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      const deleted = await inboundMessagesRepo.deleteDemoMessages(projectId);
+      return { deleted };
+    },
+  );
+
   server.patch(
     '/:id',
     {

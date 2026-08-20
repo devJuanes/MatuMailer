@@ -37,7 +37,9 @@ declare module 'fastify' {
 }
 
 const PORT = Number(process.env.PORT ?? 4000);
-const CORS_ORIGIN = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
+const CORS_ORIGIN =
+  process.env.CORS_ORIGIN ??
+  'http://localhost:3000,http://localhost:3015,https://matumailer.matubyte.com,https://mail.matubyte.com';
 
 async function buildServer() {
   const app = Fastify({

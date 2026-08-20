@@ -12,7 +12,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Sparkles,
   Smile,
   Reply,
   Paperclip,
@@ -20,7 +19,7 @@ import {
   Link2,
   AtSign,
   ArrowUp,
-  Wand2,
+  Mail,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { InboxEmail } from '@/lib/mail/types';
@@ -29,8 +28,8 @@ interface MessageViewProps {
   email: InboxEmail | null;
   index: number;
   total: number;
-  smartResponses: boolean;
   composerAvatar: string;
+  sending?: boolean;
   onBack: () => void;
   onArchive: () => void;
   onSpam: () => void;
@@ -40,15 +39,14 @@ interface MessageViewProps {
   onPrev: () => void;
   onNext: () => void;
   onSend: (text: string) => void;
-  onQuickReply: (text: string) => void;
 }
 
 export function MessageView({
   email,
   index,
   total,
-  smartResponses,
   composerAvatar,
+  sending = false,
   onBack,
   onArchive,
   onSpam,
@@ -58,7 +56,6 @@ export function MessageView({
   onPrev,
   onNext,
   onSend,
-  onQuickReply,
 }: MessageViewProps) {
   const [draft, setDraft] = useState('');
   const [recipient, setRecipient] = useState('');
@@ -74,10 +71,10 @@ export function MessageView({
       <section className="flex h-full flex-1 items-center justify-center bg-[#0c0c0e]">
         <div className="text-center">
           <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-600">
-            <Sparkles size={24} />
+            <Mail size={24} />
           </div>
           <p className="text-sm font-medium text-zinc-400">Selecciona un mensaje</p>
-          <p className="mt-1 text-xs text-zinc-600">Tu bandeja está lista</p>
+          <p className="mt-1 text-xs text-zinc-600">O pulsa Redactar para escribir uno nuevo</p>
         </div>
       </section>
     );
@@ -118,8 +115,8 @@ export function MessageView({
           {toolBtn('Papelera', onTrash, Trash2)}
           {toolBtn('Favorito', onToggleStar, Star, email.starred)}
           {toolBtn('Pin', onTogglePin, Pin, email.pinned, 'text-zinc-200')}
-          {toolBtn('Move', () => undefined, FolderInput)}
-          {toolBtn('More', () => undefined, MoreHorizontal)}
+          {toolBtn('Mover', () => undefined, FolderInput)}
+          {toolBtn('Más', () => undefined, MoreHorizontal)}
         </div>
         <div className="flex items-center gap-1 text-xs text-zinc-500">
           <button
@@ -127,7 +124,7 @@ export function MessageView({
             onClick={onPrev}
             disabled={index <= 0}
             className="rounded-lg p-1.5 hover:bg-zinc-800 disabled:opacity-30"
-            aria-label="Previous"
+            aria-label="Anterior"
           >
             <ChevronLeft size={16} />
           </button>
@@ -139,7 +136,7 @@ export function MessageView({
             onClick={onNext}
             disabled={index >= total - 1}
             className="rounded-lg p-1.5 hover:bg-zinc-800 disabled:opacity-30"
-            aria-label="Next"
+            aria-label="Siguiente"
           >
             <ChevronRight size={16} />
           </button>
@@ -152,18 +149,6 @@ export function MessageView({
           <h2 className="text-2xl font-semibold tracking-tight text-white">{email.subject}</h2>
         </div>
 
-        {email.summary && (
-          <div className="mb-5 rounded-2xl border border-amber-900/25 bg-[#2a2118] px-4 py-3.5">
-            <div className="mb-2 flex items-center gap-2 text-amber-400">
-              <Sparkles size={16} />
-              <span className="text-sm font-semibold text-amber-100">
-                Resumen del correo de {email.from.name}
-              </span>
-            </div>
-            <p className="text-sm leading-relaxed text-amber-100/70">{email.summary}</p>
-          </div>
-        )}
-
         <div className="mb-5 flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <img src={email.from.avatar} alt="" className="size-11 rounded-full bg-zinc-800" />
@@ -174,7 +159,7 @@ export function MessageView({
                 className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300"
               >
                 <span className="truncate">
-                  {email.from.email} → to: {email.to}
+                  {email.from.email} → {email.to}
                 </span>
                 <ChevronDown size={12} />
               </button>
@@ -235,24 +220,6 @@ export function MessageView({
             )}
           </div>
         )}
-
-        {smartResponses && email.quickReplies.length > 0 && (
-          <div className="mt-8 flex flex-wrap gap-2">
-            {email.quickReplies.map((reply) => (
-              <button
-                key={reply}
-                type="button"
-                onClick={() => {
-                  setDraft(reply);
-                  onQuickReply(reply);
-                }}
-                className="rounded-full border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 hover:text-white"
-              >
-                {reply}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="border-t border-zinc-800/60 px-4 py-3">
@@ -268,20 +235,8 @@ export function MessageView({
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-xs text-zinc-400 outline-none"
-                placeholder="Recipient"
+                placeholder="Destinatario"
               />
-              <button
-                type="button"
-                onClick={() =>
-                  setDraft(
-                    `Gracias por escribir sobre "${email.subject}". ¿Cuándo te viene bien continuar la conversación?`,
-                  )
-                }
-                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-white"
-              >
-                <Wand2 size={12} className="text-amber-400" />
-                Generate quick reply
-              </button>
             </div>
             <textarea
               value={draft}
@@ -295,21 +250,21 @@ export function MessageView({
                 <button
                   type="button"
                   className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                  aria-label="Mention"
+                  aria-label="Mención"
                 >
                   <AtSign size={16} />
                 </button>
                 <button
                   type="button"
                   className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                  aria-label="Bold"
+                  aria-label="Negrita"
                 >
                   <Bold size={16} />
                 </button>
                 <button
                   type="button"
                   className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                  aria-label="Link"
+                  aria-label="Enlace"
                 >
                   <Link2 size={16} />
                 </button>
@@ -323,14 +278,14 @@ export function MessageView({
                 <button
                   type="button"
                   className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                  aria-label="Attach"
+                  aria-label="Adjuntar"
                 >
                   <Paperclip size={16} />
                 </button>
               </div>
               <button
                 type="button"
-                disabled={!draft.trim()}
+                disabled={!draft.trim() || sending}
                 onClick={() => {
                   onSend(draft.trim());
                   setDraft('');

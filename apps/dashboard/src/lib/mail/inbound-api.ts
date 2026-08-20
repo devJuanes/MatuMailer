@@ -65,9 +65,10 @@ export function mapInboundToEmail(m: ApiInboundMessage): InboxEmail {
     hasAttachment: m.has_attachment,
     category: (m.category as MailCategory) || 'primary',
     folder: (m.folder as MailFolder) || 'inbox',
-    account: m.to_email,
+    // En enviados la "cuenta" es el remitente (nuestro alias); en inbox es el destinatario.
+    account: m.folder === 'sent' ? m.from_email : m.to_email,
     section: sectionFor(ts),
-    quickReplies: ['¡Gracias!', 'Recibido', 'Te respondo pronto'],
+    quickReplies: [],
   };
 }
 
@@ -91,6 +92,13 @@ export async function patchInboundMessage(
   return api<{ message: ApiInboundMessage }>(`/api/inbound/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(updates),
+  });
+}
+
+/** Borra mensajes de prueba (@example.com) del proyecto. */
+export async function purgeDemoInboundMessages(projectId: string) {
+  return api<{ deleted: number }>(`/api/inbound/purge-demo?projectId=${projectId}`, {
+    method: 'POST',
   });
 }
 

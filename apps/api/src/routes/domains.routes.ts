@@ -3,14 +3,13 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import {
   createDomainSchema,
   updateDomainSchema,
-  buildDkimTxtValue,
-  buildSpfTxtValue,
-  buildDmarcTxtValue,
-  dkimHost,
-  returnPathHost,
-  returnPathTarget,
+  buildDomainDnsRecordList,
   buildMxRecords,
   generateDkimKeyPair,
+  isStaleMatumailerDnsValue,
+  returnPathHost,
+  returnPathTarget,
+  MATUMAILER_MAIL_HOST,
 } from '@matumailer/shared';
 import { domainsRepo, projectsRepo } from '@matumailer/database';
 import { z } from 'zod';
@@ -35,6 +34,26 @@ function ensureProjectAccess(
   userId: string | undefined,
 ): project is { user_id: string } {
   return !!project && !!userId && project.user_id === userId;
+}
+
+async function regenerateDnsForDomain(domain: {
+  id: string;
+  domain: string;
+  region: string;
+  dkim_selector: string;
+  dkim_public_key: string;
+  return_path_subdomain: string;
+}) {
+  const records = buildDomainDnsRecordList({
+    domain: domain.domain,
+    region: domain.region,
+    dkimSelector: domain.dkim_selector,
+    dkimPublicKey: domain.dkim_public_key,
+    returnPathSubdomain: domain.return_path_subdomain,
+  });
+  await domainsRepo.replaceDnsRecords(domain.id, records);
+  await domainsRepo.updateDomainStatus(domain.id, 'pending', false);
+  return domainsRepo.findDomainWithRecords(domain.id);
 }
 
 export async function domainsRoutes(app: FastifyInstance) {
@@ -107,43 +126,13 @@ export async function domainsRoutes(app: FastifyInstance) {
 
       const keyPair = generateDkimKeyPair();
       const returnPathSubdomain = randomReturnPathSubdomain();
-
-      const dmarc = buildDmarcTxtValue();
-      const dkimValue = buildDkimTxtValue(keyPair.publicKey);
-      const spfValue = buildSpfTxtValue({ includeRelay: true });
-
-      const records = [
-        {
-          type: 'TXT' as const,
-          host: request.body.domain,
-          value: spfValue,
-          priority: null,
-        },
-        {
-          type: 'TXT' as const,
-          host: dkimHost(request.body.domain, keyPair.selector),
-          value: dkimValue,
-          priority: null,
-        },
-        {
-          type: 'TXT' as const,
-          host: `${dmarc.host}.${request.body.domain}`,
-          value: dmarc.value,
-          priority: null,
-        },
-        {
-          type: 'CNAME' as const,
-          host: returnPathHost(returnPathSubdomain, request.body.domain),
-          value: returnPathTarget(request.body.region),
-          priority: null,
-        },
-        ...buildMxRecords({ region: request.body.region }).map((m) => ({
-          type: 'MX' as const,
-          host: m.host === '@' ? request.body.domain : m.host,
-          value: m.value,
-          priority: m.priority,
-        })),
-      ];
+      const records = buildDomainDnsRecordList({
+        domain: request.body.domain,
+        region: request.body.region,
+        dkimSelector: keyPair.selector,
+        dkimPublicKey: keyPair.publicKey,
+        returnPathSubdomain,
+      });
 
       const encryptedPrivateKey = encrypt(keyPair.privateKeyPem);
 
@@ -159,7 +148,10 @@ export async function domainsRoutes(app: FastifyInstance) {
       });
 
       const { dkim_private_key_encrypted: _dkimPrivate, ...publicDomain } = created;
-      return reply.status(201).send({ domain: publicDomain });
+      return reply.status(201).send({
+        domain: publicDomain,
+        message: `Publica estos DNS. El MX debe apuntar a ${MATUMAILER_MAIL_HOST} (prioridad 10).`,
+      });
     },
   );
 
@@ -233,8 +225,9 @@ export async function domainsRoutes(app: FastifyInstance) {
     },
   );
 
+  /** Regenera los registros DNS (corrige hosts muertos matumailer.com → matubyte.com). */
   server.post(
-    '/:id/verify',
+    '/:id/refresh-dns',
     {
       preHandler: [app.authenticate],
       schema: { params: z.object({ id: z.string().uuid() }), tags: ['Domains'] },
@@ -247,19 +240,60 @@ export async function domainsRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Not Found' });
       }
 
+      const fresh = await regenerateDnsForDomain(domain);
+      const { dkim_private_key_encrypted: _dkimPrivate, ...publicDomain } = fresh!;
+      return {
+        domain: publicDomain,
+        refreshed: true,
+        message: `Registros actualizados. Borra los DNS viejos (mx.*, feedback.*, _spf.matumailer.com) y publica estos. MX → ${MATUMAILER_MAIL_HOST}`,
+      };
+    },
+  );
+
+  server.post(
+    '/:id/verify',
+    {
+      preHandler: [app.authenticate],
+      schema: { params: z.object({ id: z.string().uuid() }), tags: ['Domains'] },
+    },
+    async (request, reply) => {
+      let domain = await domainsRepo.findDomainById(request.params.id);
+      if (!domain) return reply.status(404).send({ error: 'Not Found' });
+      const project = await projectsRepo.findProjectById(domain.project_id);
+      if (!ensureProjectAccess(project, request.userId!)) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+
+      let records = await domainsRepo.listRecordsByDomain(domain.id);
+      const stale = records.some(
+        (r) => isStaleMatumailerDnsValue(r.value) || isStaleMatumailerDnsValue(r.host),
+      );
+      let autoRefreshed = false;
+      if (stale) {
+        const refreshed = await regenerateDnsForDomain(domain);
+        domain = refreshed!;
+        records = refreshed!.records;
+        autoRefreshed = true;
+      }
+
       await domainsRepo.updateDomainStatus(domain.id, 'verifying');
+
+      const mxRecords = buildMxRecords({ region: domain.region });
+      const primaryMx = mxRecords[0];
+      const mxHost = primaryMx?.host === '@' ? domain.domain : (primaryMx?.host ?? domain.domain);
+      const mxTarget = primaryMx?.value ?? MATUMAILER_MAIL_HOST;
 
       const checks = await checkDomainDns({
         domain: domain.domain,
         dkimSelector: domain.dkim_selector,
         dkimPublicKey: domain.dkim_public_key,
-        mxHost: `mx.${domain.domain}`,
-        mxTarget: `mx.${domain.region}.matumailer.com`,
+        expectedSpfContains: '13.140.160.248',
+        mxHost,
+        mxTarget,
         returnPathHost: returnPathHost(domain.return_path_subdomain, domain.domain),
         returnPathTarget: returnPathTarget(domain.region),
       });
 
-      const records = await domainsRepo.listRecordsByDomain(domain.id);
       const updated: typeof records = [];
 
       for (const record of records) {
@@ -279,8 +313,7 @@ export async function domainsRoutes(app: FastifyInstance) {
         });
       }
 
-      const requiredTypes = ['TXT', 'TXT', 'TXT', 'CNAME'];
-      const requiredRecords = updated.filter((r) => requiredTypes.includes(r.type));
+      const requiredRecords = updated.filter((r) => ['TXT', 'CNAME', 'MX'].includes(r.type));
       const allRequiredOk = requiredRecords.every((r) => r.status === 'verified');
 
       const newStatus = allRequiredOk ? 'verified' : 'failed';
@@ -289,12 +322,25 @@ export async function domainsRoutes(app: FastifyInstance) {
 
       const fresh = await domainsRepo.findDomainWithRecords(domain.id);
       const { dkim_private_key_encrypted: _dkimPrivate, ...publicDomain } = fresh!;
+      const missing = checks
+        .filter((c) => !c.found)
+        .map((c) => ({ type: c.type, host: c.host, reason: c.reason ?? 'not_found' }));
+
+      let message: string;
+      if (autoRefreshed && !allRequiredOk) {
+        message = `Tus DNS apuntaban a hosts que no existen (matumailer.com). Ya regeneramos la lista correcta. Actualiza en tu proveedor: MX del dominio → ${MATUMAILER_MAIL_HOST} (prioridad 10), SPF con ip4:13.140.160.248, y el CNAME de return-path → ${MATUMAILER_MAIL_HOST}. Luego re-verifica.`;
+      } else if (allRequiredOk) {
+        message = 'Dominio verificado. Ya puedes enviar y recibir.';
+      } else {
+        message = `Faltan DNS. El MX debe ser ${MATUMAILER_MAIL_HOST} en el apex del dominio (no mx.tudominio).`;
+      }
+
       return {
         domain: publicDomain,
         verified: allRequiredOk,
-        missing: checks
-          .filter((c) => !c.found)
-          .map((c) => ({ type: c.type, host: c.host, reason: c.reason ?? 'not_found' })),
+        missing,
+        autoRefreshed,
+        message,
       };
     },
   );

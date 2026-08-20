@@ -37,6 +37,8 @@ export type DomainVerifyResult = {
   domain: DomainWithRecords;
   verified: boolean;
   missing: Array<{ type: 'TXT' | 'CNAME' | 'MX'; host: string; reason: string }>;
+  message?: string;
+  autoRefreshed?: boolean;
 };
 
 export async function listDomains(projectId: string): Promise<DomainRecord[]> {
@@ -62,6 +64,13 @@ export async function getDomain(domainId: string): Promise<DomainWithRecords> {
 
 export async function verifyDomain(domainId: string): Promise<DomainVerifyResult> {
   return api<DomainVerifyResult>(`/api/domains/${domainId}/verify`, { method: 'POST' });
+}
+
+export async function refreshDomainDns(domainId: string): Promise<{
+  domain: DomainWithRecords;
+  message?: string;
+}> {
+  return api(`/api/domains/${domainId}/refresh-dns`, { method: 'POST' });
 }
 
 export async function deleteDomain(domainId: string): Promise<void> {

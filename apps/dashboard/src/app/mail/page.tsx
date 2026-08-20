@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { MailSidebar } from '@/components/mail/MailSidebar';
 import { MessageList } from '@/components/mail/MessageList';
 import { MessageView } from '@/components/mail/MessageView';
-import { ComposeModal } from '@/components/mail/ComposeModal';
+import { ComposePane } from '@/components/mail/ComposePane';
 import { useProjects } from '@/hooks/use-project';
 import { api, getToken } from '@/lib/api';
 import { listAliases } from '@/lib/db/aliases';
@@ -14,6 +14,7 @@ import {
   aliasesToAccounts,
   fetchInboundMessages,
   patchInboundMessage,
+  purgeDemoInboundMessages,
 } from '@/lib/mail/inbound-api';
 import type {
   AccountId,
@@ -34,6 +35,9 @@ const FOLDER_TITLES: Record<MailFolder, string> = {
   trash: 'Papelera',
 };
 
+const DASHBOARD_URL =
+  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://matumailer.matubyte.com';
+
 export default function MailInboxPage() {
   const router = useRouter();
   const { activeId, projects } = useProjects();
@@ -44,11 +48,10 @@ export default function MailInboxPage() {
   const [filter, setFilter] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [smartResponses, setSmartResponses] = useState(true);
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [composeOpen, setComposeOpen] = useState(false);
+  const [composing, setComposing] = useState(false);
   const [composeDefaults, setComposeDefaults] = useState<{
     to?: string;
     subject?: string;
@@ -57,33 +60,78 @@ export default function MailInboxPage() {
 
   const showToast = useCallback((message: string) => {
     setToast(message);
-    window.setTimeout(() => setToast(null), 2200);
+    window.setTimeout(() => setToast(null), 2800);
   }, []);
 
   useEffect(() => {
     if (!getToken()) router.replace('/login');
   }, [router]);
 
-  const load = useCallback(async () => {
-    if (!activeId) return;
-    setLoading(true);
-    try {
-      const [aliasRows, messages] = await Promise.all([
-        listAliases(activeId, { activeOnly: true }),
-        fetchInboundMessages(activeId),
-      ]);
-      setAccounts(aliasesToAccounts(aliasRows));
-      setEmails(messages);
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : 'No se pudo cargar la bandeja');
-      setEmails([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeId, showToast]);
+  const load = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!activeId) return;
+      if (!opts?.silent) setLoading(true);
+      try {
+        const [aliasRows, messages] = await Promise.all([
+          listAliases(activeId, { activeOnly: true }),
+          fetchInboundMessages(activeId),
+        ]);
+        setAccounts(aliasesToAccounts(aliasRows));
+        // Solo mensajes reales (nunca example.com / datos de seed).
+        setEmails(
+          messages.filter(
+            (m) =>
+              !m.from.email.toLowerCase().endsWith('@example.com') &&
+              !m.to.toLowerCase().endsWith('@example.com'),
+          ),
+        );
+      } catch (e) {
+        if (!opts?.silent) {
+          showToast(e instanceof Error ? e.message : 'No se pudo cargar la bandeja');
+          setEmails([]);
+        }
+      } finally {
+        if (!opts?.silent) setLoading(false);
+      }
+    },
+    [activeId, showToast],
+  );
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    let purged = false;
+    void (async () => {
+      try {
+        const res = await purgeDemoInboundMessages(activeId);
+        if (res.deleted > 0) {
+          purged = true;
+          await load({ silent: true });
+        }
+      } catch {
+        /* best-effort */
+      }
+      if (!purged) return;
+    })();
+  }, [activeId, load]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    const id = window.setInterval(() => {
+      void load({ silent: true });
+    }, 10_000);
+    return () => window.clearInterval(id);
+  }, [activeId, load]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      void load({ silent: true });
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [load]);
 
   const visibleEmails = useMemo(() => {
@@ -110,6 +158,7 @@ export default function MailInboxPage() {
   }, [emails, folder, account, filter, search]);
 
   useEffect(() => {
+    if (composing) return;
     if (visibleEmails.length === 0) {
       setSelectedId(null);
       return;
@@ -117,7 +166,7 @@ export default function MailInboxPage() {
     if (!selectedId || !visibleEmails.some((e) => e.id === selectedId)) {
       setSelectedId(visibleEmails[0].id);
     }
-  }, [visibleEmails, selectedId]);
+  }, [visibleEmails, selectedId, composing]);
 
   const selected = visibleEmails.find((e) => e.id === selectedId) ?? null;
   const selectedIndex = selected ? visibleEmails.findIndex((e) => e.id === selected.id) : -1;
@@ -141,14 +190,26 @@ export default function MailInboxPage() {
     return accounts[0]?.email || '';
   };
 
-  const sendMail = async (payload: { from: string; to: string; subject: string; text: string }) => {
+  const sendMail = async (payload: {
+    from: string;
+    to: string;
+    subject: string;
+    text: string;
+    html?: string;
+  }) => {
     if (!activeId) return;
+    if (!payload.from) {
+      showToast('Crea un alias activo en Dominios antes de enviar');
+      return;
+    }
     setSending(true);
     try {
-      const html = `<div style="font-family:system-ui,sans-serif;white-space:pre-wrap">${payload.text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')}</div>`;
+      const html =
+        payload.html ||
+        `<div style="font-family:system-ui,sans-serif;white-space:pre-wrap">${payload.text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')}</div>`;
       await api('/api/emails/send', {
         method: 'POST',
         body: JSON.stringify({
@@ -161,7 +222,9 @@ export default function MailInboxPage() {
         }),
       });
       showToast('Correo enviado');
-      setComposeOpen(false);
+      setComposing(false);
+      setFolder('sent');
+      await load();
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'No se pudo enviar');
     } finally {
@@ -188,15 +251,25 @@ export default function MailInboxPage() {
         userName={userName}
         userEmail={userEmail}
         userAvatar={userAvatar}
-        onFolderChange={setFolder}
+        onFolderChange={(f) => {
+          setComposing(false);
+          setFolder(f);
+        }}
         onAccountChange={setAccount}
         onSearchChange={setSearch}
         onSearchFocus={() => undefined}
         onCompose={() => {
           setComposeDefaults({});
-          setComposeOpen(true);
+          setComposing(true);
+          setSelectedId(null);
         }}
-        onGoApi={() => router.push('/dashboard')}
+        onGoApi={() => {
+          if (typeof window !== 'undefined' && window.location.host.startsWith('mail.')) {
+            window.location.href = `${DASHBOARD_URL}/dashboard`;
+            return;
+          }
+          router.push('/dashboard');
+        }}
         onLogout={async () => {
           await signOut();
           router.push('/login');
@@ -204,13 +277,13 @@ export default function MailInboxPage() {
       />
 
       <MessageList
-        title={FOLDER_TITLES[folder]}
+        title={composing ? 'Redactar' : FOLDER_TITLES[folder]}
         emails={visibleEmails}
-        selectedId={selectedId}
+        selectedId={composing ? null : selectedId}
         filter={filter}
-        smartResponses={smartResponses}
         pinnedOpen={pinnedOpen}
         onSelect={(id) => {
+          setComposing(false);
           setSelectedId(id);
           const msg = emails.find((e) => e.id === id);
           if (msg?.unread) {
@@ -219,7 +292,6 @@ export default function MailInboxPage() {
           }
         }}
         onFilterChange={setFilter}
-        onToggleSmart={() => setSmartResponses((v) => !v)}
         onToggleStar={(id) => {
           const msg = emails.find((e) => e.id === id);
           if (!msg) return;
@@ -235,83 +307,74 @@ export default function MailInboxPage() {
         onTogglePinnedSection={() => setPinnedOpen((v) => !v)}
       />
 
-      <MessageView
-        email={selected}
-        index={Math.max(selectedIndex, 0)}
-        total={visibleEmails.length}
-        smartResponses={smartResponses}
-        composerAvatar={userAvatar}
-        onBack={() => setSelectedId(null)}
-        onArchive={() => {
-          if (!selected) return;
-          updateLocal(selected.id, { folder: 'archive' });
-          void persist(selected.id, { folder: 'archive' });
-          showToast('Archivado');
-        }}
-        onSpam={() => {
-          if (!selected) return;
-          updateLocal(selected.id, { folder: 'spam' });
-          void persist(selected.id, { folder: 'spam' });
-          showToast('Marcado como spam');
-        }}
-        onTrash={() => {
-          if (!selected) return;
-          updateLocal(selected.id, { folder: 'trash' });
-          void persist(selected.id, { folder: 'trash' });
-          showToast('Movido a papelera');
-        }}
-        onToggleStar={() => {
-          if (!selected) return;
-          updateLocal(selected.id, { starred: !selected.starred });
-          void persist(selected.id, { starred: !selected.starred });
-        }}
-        onTogglePin={() => {
-          if (!selected) return;
-          updateLocal(selected.id, { pinned: !selected.pinned });
-          void persist(selected.id, { pinned: !selected.pinned });
-        }}
-        onPrev={() => {
-          if (selectedIndex > 0) setSelectedId(visibleEmails[selectedIndex - 1].id);
-        }}
-        onNext={() => {
-          if (selectedIndex < visibleEmails.length - 1) {
-            setSelectedId(visibleEmails[selectedIndex + 1].id);
-          }
-        }}
-        onSend={(text) => {
-          if (!selected) return;
-          void sendMail({
-            from: resolveFrom() || selected.account,
-            to: selected.from.email,
-            subject: selected.subject.startsWith('Re:')
-              ? selected.subject
-              : `Re: ${selected.subject}`,
-            text,
-          });
-        }}
-        onQuickReply={(text) => {
-          if (!selected) return;
-          void sendMail({
-            from: resolveFrom() || selected.account,
-            to: selected.from.email,
-            subject: selected.subject.startsWith('Re:')
-              ? selected.subject
-              : `Re: ${selected.subject}`,
-            text,
-          });
-        }}
-      />
-
-      <ComposeModal
-        open={composeOpen}
-        accounts={accounts}
-        defaultFrom={resolveFrom()}
-        defaultTo={composeDefaults.to}
-        defaultSubject={composeDefaults.subject}
-        sending={sending}
-        onClose={() => setComposeOpen(false)}
-        onSend={(p) => void sendMail(p)}
-      />
+      {composing ? (
+        <ComposePane
+          accounts={accounts}
+          defaultFrom={resolveFrom()}
+          defaultTo={composeDefaults.to}
+          defaultSubject={composeDefaults.subject}
+          sending={sending}
+          onClose={() => setComposing(false)}
+          onSend={(p) => void sendMail(p)}
+        />
+      ) : (
+        <MessageView
+          email={selected}
+          index={Math.max(selectedIndex, 0)}
+          total={visibleEmails.length}
+          composerAvatar={userAvatar}
+          sending={sending}
+          onBack={() => setSelectedId(null)}
+          onArchive={() => {
+            if (!selected) return;
+            updateLocal(selected.id, { folder: 'archive' });
+            void persist(selected.id, { folder: 'archive' });
+            showToast('Archivado');
+          }}
+          onSpam={() => {
+            if (!selected) return;
+            updateLocal(selected.id, { folder: 'spam' });
+            void persist(selected.id, { folder: 'spam' });
+            showToast('Marcado como spam');
+          }}
+          onTrash={() => {
+            if (!selected) return;
+            updateLocal(selected.id, { folder: 'trash' });
+            void persist(selected.id, { folder: 'trash' });
+            showToast('Movido a papelera');
+          }}
+          onToggleStar={() => {
+            if (!selected) return;
+            updateLocal(selected.id, { starred: !selected.starred });
+            void persist(selected.id, { starred: !selected.starred });
+          }}
+          onTogglePin={() => {
+            if (!selected) return;
+            updateLocal(selected.id, { pinned: !selected.pinned });
+            void persist(selected.id, { pinned: !selected.pinned });
+          }}
+          onPrev={() => {
+            if (selectedIndex > 0) setSelectedId(visibleEmails[selectedIndex - 1].id);
+          }}
+          onNext={() => {
+            if (selectedIndex < visibleEmails.length - 1) {
+              setSelectedId(visibleEmails[selectedIndex + 1].id);
+            }
+          }}
+          onSend={(text) => {
+            if (!selected) return;
+            const replyTo = selected.folder === 'sent' ? selected.to : selected.from.email;
+            void sendMail({
+              from: resolveFrom() || selected.account,
+              to: replyTo,
+              subject: selected.subject.startsWith('Re:')
+                ? selected.subject
+                : `Re: ${selected.subject}`,
+              text,
+            });
+          }}
+        />
+      )}
 
       {loading && (
         <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">

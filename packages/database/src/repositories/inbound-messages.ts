@@ -18,6 +18,7 @@ export async function create(input: {
   html_body?: string | null;
   folder?: InboundFolder;
   category?: string;
+  unread?: boolean;
   has_attachment?: boolean;
   raw_headers?: Record<string, unknown> | null;
 }): Promise<InboundMessage> {
@@ -37,7 +38,7 @@ export async function create(input: {
     category: input.category ?? 'primary',
     starred: false,
     pinned: false,
-    unread: true,
+    unread: input.unread ?? true,
     has_attachment: input.has_attachment ?? false,
     raw_headers: input.raw_headers ?? null,
   } as Partial<InboundMessage>);
@@ -88,4 +89,29 @@ export async function updateFlags(
   }>,
 ): Promise<InboundMessage> {
   return updateOne<InboundMessage>('inbound_messages', [{ column: 'id', value: id }], updates);
+}
+
+/** Elimina mensajes demo (@example.com) de un proyecto. */
+export async function deleteDemoMessages(projectId: string): Promise<number> {
+  const db = getMatuDb();
+  const { data, error } = await db
+    .from('inbound_messages')
+    .select('id,from_email,to_email')
+    .eq('project_id', projectId)
+    .limit(500);
+  if (error) throw new Error(error.message);
+
+  const demoIds = (data ?? [])
+    .filter((row: { from_email?: string; to_email?: string }) => {
+      const from = String(row.from_email ?? '').toLowerCase();
+      const to = String(row.to_email ?? '').toLowerCase();
+      return from.endsWith('@example.com') || to.endsWith('@example.com');
+    })
+    .map((row: { id: string }) => row.id);
+
+  if (demoIds.length === 0) return 0;
+
+  const { error: delErr } = await db.from('inbound_messages').in('id', demoIds).delete();
+  if (delErr) throw new Error(delErr.message);
+  return demoIds.length;
 }

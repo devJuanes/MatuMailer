@@ -60,6 +60,8 @@ if (!matudbUrl || !matudbProjectId || !matudbApiKey) {
 const publicKeys = [
   'NEXT_PUBLIC_API_URL',
   'NEXT_PUBLIC_APP_URL',
+  'NEXT_PUBLIC_MAIL_HOST',
+  'NEXT_PUBLIC_APP_HOST',
   'NEXT_PUBLIC_CONTACT_EMAIL',
   'NEXT_PUBLIC_CONTACT_PHONE',
   'NEXT_PUBLIC_CONTACT_WHATSAPP',
@@ -76,6 +78,8 @@ const merged = {
 const defaults = {
   NEXT_PUBLIC_API_URL: 'http://localhost:4001',
   NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
+  NEXT_PUBLIC_MAIL_HOST: 'mail.matubyte.com',
+  NEXT_PUBLIC_APP_HOST: 'matumailer.matubyte.com',
   NEXT_PUBLIC_CONTACT_EMAIL: 'contacto@matubyte.com',
   NEXT_PUBLIC_CONTACT_PHONE: '+57 333 277 1764',
   NEXT_PUBLIC_CONTACT_WHATSAPP: '573332771764',
@@ -113,6 +117,8 @@ const prodVars = {
   NEXT_PUBLIC_APP_URL: env.APP_URL?.startsWith('https://')
     ? env.APP_URL
     : 'https://matumailer.matubyte.com',
+  NEXT_PUBLIC_MAIL_HOST: env.NEXT_PUBLIC_MAIL_HOST || 'mail.matubyte.com',
+  NEXT_PUBLIC_APP_HOST: env.NEXT_PUBLIC_APP_HOST || 'matumailer.matubyte.com',
 };
 writeFileSync(productionPath, formatEnv(prodVars), 'utf8');
 

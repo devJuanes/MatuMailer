@@ -146,6 +146,32 @@ export async function updateRecordStatus(
   });
 }
 
+export async function replaceDnsRecords(
+  domainId: string,
+  records: Array<{
+    type: 'TXT' | 'CNAME' | 'MX';
+    host: string;
+    value: string;
+    priority?: number | null;
+  }>,
+): Promise<DomainDnsRecord[]> {
+  const db = getMatuDb();
+  await db.from('mailer_domain_dns_records').eq('domain_id', domainId).delete();
+  return insertMany<DomainDnsRecord>(
+    'mailer_domain_dns_records',
+    records.map((r) => ({
+      domain_id: domainId,
+      type: r.type,
+      host: r.host,
+      value: r.value,
+      priority: r.priority ?? null,
+      status: 'pending',
+      last_check_at: null,
+      last_value: null,
+    })),
+  );
+}
+
 export async function deleteDomain(id: string): Promise<void> {
   const db = getMatuDb();
   await db.from('mailer_domains').eq('id', id).delete();

@@ -13,6 +13,7 @@ import {
   deleteDomain,
   getDomain,
   listDomains,
+  refreshDomainDns,
   setDefaultDomain,
   verifyDomain,
   type DomainDnsRecord,
@@ -159,9 +160,11 @@ function DomainCard({
   const [details, setDetails] = useState<DomainWithRecords | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [makingDefault, setMakingDefault] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -180,15 +183,42 @@ function DomainCard({
 
   async function handleVerify() {
     setError('');
+    setInfo('');
     setVerifying(true);
     try {
       const result = await verifyDomain(domain.id);
       setDetails(result.domain);
+      if (result.verified) {
+        setInfo(result.message ?? 'Dominio verificado.');
+      } else {
+        setError(
+          result.message ?? 'Faltan registros DNS. Actualiza los registros y vuelve a verificar.',
+        );
+      }
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Verificación falló');
     } finally {
       setVerifying(false);
+    }
+  }
+
+  async function handleRefreshDns() {
+    setError('');
+    setInfo('');
+    setRefreshing(true);
+    try {
+      const result = await refreshDomainDns(domain.id);
+      setDetails(result.domain);
+      setInfo(
+        result.message ??
+          'Registros regenerados. Actualiza el DNS en tu proveedor y luego Re-verifica.',
+      );
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudieron regenerar los DNS');
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -236,6 +266,15 @@ function DomainCard({
             <Button
               size="sm"
               variant="secondary"
+              onClick={handleRefreshDns}
+              disabled={refreshing || verifying}
+            >
+              <RefreshCcw className={cn('mr-1 h-4 w-4', refreshing && 'animate-spin')} />
+              {refreshing ? 'Actualizando…' : 'Actualizar registros DNS'}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={handleVerify}
               disabled={verifying || domain.status === 'verifying'}
             >
@@ -266,6 +305,12 @@ function DomainCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {error && <p className="rounded-2xl bg-red-50 px-4 py-2 text-sm text-red-800">{error}</p>}
+        {info && <p className="rounded-2xl bg-amber-50 px-4 py-2 text-sm text-amber-950">{info}</p>}
+        <p className="text-xs text-muted-foreground">
+          MX correcto: host <strong>{domain.domain}</strong> (o @) →{' '}
+          <code>matumailer.matubyte.com</code> prioridad 10. No uses{' '}
+          <code>mx.us-east-1.matumailer.com</code> (ese host no existe).
+        </p>
         {loadingDetails ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Cargando registros DNS…
@@ -339,7 +384,7 @@ export default function DomainsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Dominios personalizados"
-        description="Añade tu dominio, configura DNS (SPF, DKIM, DMARC, MX, return-path) y envía como support@tu-dominio.com — igual que Resend, pero self-host-friendly."
+        description="Añade tu dominio y configura DNS (SPF, DKIM, DMARC, return-path y MX). El MX es obligatorio: debe apuntar a matumailer.matubyte.com para recibir. Sin DNS verificados no podrás enviar ni recibir."
       />
 
       {success && (
@@ -356,7 +401,8 @@ export default function DomainsPage() {
                 Añadir dominio
               </CardTitle>
               <CardDescription>
-                Te generamos un par DKIM, claves MX y un CNAME para el return-path.
+                Te generamos SPF, DKIM, DMARC, return-path y MX (prioridad 10 →
+                matumailer.matubyte.com). El MX es obligatorio para recibir correos en la bandeja.
               </CardDescription>
             </div>
             <Button variant="secondary" onClick={() => setShowForm((s) => !s)}>

@@ -90,7 +90,8 @@ export async function checkDnsRecords(
     }
     if (item.type === 'MX') {
       const records = await lookupMx(item.host);
-      const found = records.some((r) => r.exchange.toLowerCase() === item.expected.toLowerCase());
+      const expected = item.expected.replace(/\.$/, '').toLowerCase();
+      const found = records.some((r) => r.exchange.replace(/\.$/, '').toLowerCase() === expected);
       return {
         type: 'MX',
         host: item.host,
@@ -157,8 +158,9 @@ export async function checkDomainDns(opts: {
     {
       type: 'TXT',
       host: opts.domain,
-      expected: opts.expectedSpfContains ?? 'v=spf1',
-      matchMode: 'startsWith',
+      expected:
+        opts.expectedSpfContains ?? `ip4:${process.env.MATUMAILER_RELAY_IP || '13.140.160.248'}`,
+      matchMode: 'contains',
     },
     {
       type: 'TXT',

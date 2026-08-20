@@ -5,6 +5,7 @@ import {
   campaignsRepo,
   contactsRepo,
   emailLogsRepo,
+  inboundMessagesRepo,
   templatesRepo,
 } from '@matumailer/database';
 import { decrypt } from '../lib/crypto.js';
@@ -272,10 +273,44 @@ async function sendEmailToOne(
             },
     });
 
+    const finalMessageId = delivery.messageId ?? messageId;
+
     await emailLogsRepo.updateEmailLogStatus(log.id, 'sent', {
       sent_at: new Date().toISOString(),
-      message_id: delivery.messageId ?? messageId,
+      message_id: finalMessageId,
     });
+
+    // Espejo en bandeja → carpeta Enviados (para que se vea en tiempo real).
+    try {
+      const plain =
+        (content.text && content.text.trim()) ||
+        html
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      const preview = plain.slice(0, 160);
+      await inboundMessagesRepo.create({
+        project_id: projectId,
+        domain_id: resolved.domain.id,
+        alias_id: resolved.aliasId,
+        message_id: finalMessageId,
+        from_email: fromEmail,
+        from_name: fromName,
+        to_email: to,
+        subject: content.subject,
+        preview,
+        text_body: content.text || plain,
+        html_body: html,
+        folder: 'sent',
+        category: 'primary',
+        unread: false,
+      });
+    } catch (mirrorErr) {
+      console.warn(
+        '[email.service] no se pudo guardar en Enviados:',
+        mirrorErr instanceof Error ? mirrorErr.message : mirrorErr,
+      );
+    }
 
     if (campaignId) {
       await campaignsRepo.incrementCounts(campaignId, { sent: 1 });

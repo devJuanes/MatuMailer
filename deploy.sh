@@ -106,11 +106,33 @@ EOF
   ok "apps/dashboard/.env.production escrito (fallback)"
 fi
 
-# Asegura CORS_ORIGIN / APP_URL coherentes con producción
+# Asegura CORS_ORIGIN incluye dashboard + bandeja (subdominio mail)
+MAIL_URL="${MAIL_URL:-https://mail.matubyte.com}"
+DESIRED_CORS="${SITE_URL},${MAIL_URL},http://localhost:3000,http://localhost:3015"
 if ! grep -q '^CORS_ORIGIN=' .env; then
-  echo "CORS_ORIGIN=$SITE_URL" >> .env
-elif ! grep -q "^CORS_ORIGIN=$SITE_URL" .env; then
-  log "Aviso: CORS_ORIGIN en .env no coincide con $SITE_URL — revisa manualmente"
+  echo "CORS_ORIGIN=$DESIRED_CORS" >> .env
+else
+  # Añade mail.matubyte.com si falta
+  if ! grep -q 'mail.matubyte.com' .env; then
+    log "Añadiendo mail.matubyte.com a CORS_ORIGIN"
+    sed -i "s|^CORS_ORIGIN=.*|CORS_ORIGIN=$DESIRED_CORS|" .env || true
+  fi
+fi
+if ! grep -q '^NEXT_PUBLIC_MAIL_HOST=' .env; then
+  echo 'NEXT_PUBLIC_MAIL_HOST=mail.matubyte.com' >> .env
+fi
+if ! grep -q '^NEXT_PUBLIC_APP_HOST=' .env; then
+  echo 'NEXT_PUBLIC_APP_HOST=matumailer.matubyte.com' >> .env
+fi
+# Recepción: secret + sync Postfix
+if ! grep -q '^POSTFIX_INBOUND_SYNC=' .env; then
+  echo 'POSTFIX_INBOUND_SYNC=1' >> .env
+fi
+if ! grep -q '^INBOUND_WEBHOOK_SECRET=' .env; then
+  echo "INBOUND_WEBHOOK_SECRET=$(openssl rand -hex 24 2>/dev/null || head -c 24 /dev/urandom | xxd -p)" >> .env
+fi
+if ! grep -q '^INBOUND_API_URL=' .env; then
+  echo "INBOUND_API_URL=${SITE_URL}/api/inbound/ingest" >> .env
 fi
 
 # ── Migraciones (best-effort) ───────────────────────────────────────────────
@@ -121,6 +143,7 @@ if [[ "$DO_MIGRATE" -eq 1 ]]; then
   if [[ -f packages/database/scripts/apply-messaging-upgrade.mjs ]]; then
     node packages/database/scripts/apply-messaging-upgrade.mjs || true
   fi
+  npm run db:migrate:inbound --workspace=@matumailer/database || true
   ok "Migraciones intentadas"
 else
   log "Omitiendo migraciones (--no-migrate)"
@@ -158,6 +181,33 @@ if [[ "$DO_PM2" -eq 1 ]]; then
   fi
 
   curl -sS -m 10 -I "$DASHBOARD_PROBE" 2>/dev/null | head -5 || true
+
+  # Nginx bandeja mail.matubyte.com + Postfix inbound (best-effort)
+  if [[ -f "$APP_DIR/deploy/nginx/mail.matubyte.com.conf" ]]; then
+    log "Nginx mail.matubyte.com"
+    cp "$APP_DIR/deploy/nginx/mail.matubyte.com.conf" /etc/nginx/sites-available/mail.matubyte.com
+    ln -sf /etc/nginx/sites-available/mail.matubyte.com /etc/nginx/sites-enabled/mail.matubyte.com
+    if [[ ! -f /etc/letsencrypt/live/mail.matubyte.com/fullchain.pem ]]; then
+      # HTTP temporal para certbot si aún no hay cert
+      cat > /etc/nginx/sites-available/mail.matubyte.com << 'NGX'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name mail.matubyte.com;
+    location / { return 200 'ok'; add_header Content-Type text/plain; }
+}
+NGX
+      nginx -t && systemctl reload nginx || true
+      certbot certonly --nginx -d mail.matubyte.com --non-interactive --agree-tos -m admin@matubyte.com || true
+      cp "$APP_DIR/deploy/nginx/mail.matubyte.com.conf" /etc/nginx/sites-available/mail.matubyte.com
+    fi
+    nginx -t && systemctl reload nginx || true
+  fi
+
+  if [[ -f "$APP_DIR/scripts/setup-postfix-inbound.sh" ]]; then
+    log "Postfix inbound (recepción)"
+    bash "$APP_DIR/scripts/setup-postfix-inbound.sh" || true
+  fi
 else
   log "Omitiendo PM2 (--no-pm2). Ejecuta: pm2 restart all"
 fi
@@ -165,5 +215,6 @@ fi
 echo ""
 echo "════════════════════════════════════════"
 echo "  Deploy listo — $SITE_URL"
+echo "  Bandeja: https://mail.matubyte.com"
 echo "  Commit: $(git rev-parse --short HEAD)"
 echo "════════════════════════════════════════"
