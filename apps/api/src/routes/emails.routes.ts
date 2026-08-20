@@ -43,21 +43,40 @@ export async function emailsRoutes(app: FastifyInstance) {
     async (request, reply) => {
       try {
         const body = request.body;
+
+        // Resolución del `projectId`:
+        //  1) `mm_live_...` token → viene en `request.projectId`.
+        //  2) JWT de MatuDB → no tiene projectId; lo sacamos del body o usamos
+        //     el primer proyecto del usuario como fallback.
+        let projectId = request.projectId ?? body.projectId ?? null;
+        if (!projectId && request.userId) {
+          const { projectsRepo } = await import('@matumailer/database');
+          const projects = await projectsRepo.findProjectsByUserId(request.userId);
+          if (projects.length === 1) projectId = projects[0].id;
+        }
+        if (!projectId) {
+          return reply.status(400).send({
+            error: 'PROJECT_REQUIRED',
+            message:
+              'No se pudo inferir el proyecto. Pasa `projectId` en el body o usa un token `mm_live_...`.',
+          });
+        }
+
         if (body.scheduledAt) {
-          await assertCanSendForProject(request.projectId!, { schedule: true });
+          await assertCanSendForProject(projectId, { schedule: true });
         }
         const recipients = Array.isArray(body.to) ? body.to : [body.to];
         if (recipients.length > 1) {
-          await assertCanSendForProject(request.projectId!, {
+          await assertCanSendForProject(projectId, {
             bulk: true,
             count: recipients.length,
           });
         } else {
-          await assertCanSendForProject(request.projectId!, { count: 1 });
+          await assertCanSendForProject(projectId, { count: 1 });
         }
 
         if (body.scheduledAt) {
-          const scheduled = await enqueueScheduledEmail(request.projectId!, body, body.scheduledAt);
+          const scheduled = await enqueueScheduledEmail(projectId, body, body.scheduledAt);
           return reply.status(201).send({
             success: true,
             scheduled: true,
@@ -67,7 +86,7 @@ export async function emailsRoutes(app: FastifyInstance) {
           });
         }
         const result = await sendEmail({
-          projectId: request.projectId!,
+          projectId,
           ...body,
         });
         return { success: true, scheduled: false, ...result };
@@ -75,9 +94,11 @@ export async function emailsRoutes(app: FastifyInstance) {
         if (replyPlanLimitError(reply, err)) return;
         const code = err instanceof Error ? err.message : 'SEND_FAILED';
         const status =
-          code === 'SMTP_NOT_CONFIGURED' ||
-          code === 'SMTP_NOT_VERIFIED' ||
-          code === 'SMTP_FROM_DOMAIN_MISMATCH' ||
+          code === 'NO_DEFAULT_FROM' ||
+          code === 'NO_VERIFIED_DOMAIN' ||
+          code === 'NO_ALIAS_ON_DOMAIN' ||
+          code === 'FROM_NOT_ALIAS_OF_VERIFIED_DOMAIN' ||
+          code === 'FROM_DOMAIN_NOT_VERIFIED' ||
           code === 'INVALID_SCHEDULE_TIME' ||
           code === 'SCHEDULE_TOO_SOON'
             ? 400

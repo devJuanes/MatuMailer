@@ -81,6 +81,9 @@ export default function SendTestPage() {
       fromName: alias?.display_name ?? undefined,
       subject: form.subject,
       html: form.html,
+      // El server infiere el projectId del token mm_live_… pero como el
+      // dashboard usa JWT de MatuDB lo pasamos explícito en el body.
+      projectId: activeId,
     };
     if (form.replyTo) body.replyTo = form.replyTo;
     if (form.cc)

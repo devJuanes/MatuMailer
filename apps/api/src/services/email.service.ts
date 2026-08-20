@@ -436,6 +436,12 @@ async function sendEmailToOne(
     return { id: log.id, status: 'sent' };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error(
+      `[email.service] send failed for project=${projectId} to=${to} from=${fromEmail}:`,
+      message,
+      stack,
+    );
     const userMessage = humanizeEmailError(message);
     await emailLogsRepo.updateEmailLogStatus(log.id, 'failed', {
       error_message: message,

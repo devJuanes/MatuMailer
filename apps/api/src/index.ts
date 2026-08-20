@@ -89,10 +89,28 @@ async function buildServer() {
 
   app.setErrorHandler(async (error, request, reply) => {
     const err = error instanceof Error ? error : new Error(String(error));
-    request.log.error({ err, url: request.url }, 'request error');
-    await reportMatuOpsError(err, { url: request.url, method: request.method }).catch(
-      () => undefined,
+    // Logueo detallado para debugging: stack trace + contexto de la request
+    request.log.error(
+      {
+        err,
+        stack: err.stack,
+        url: request.url,
+        method: request.method,
+        params: request.params,
+        query: request.query,
+        body: request.body,
+        userId: request.userId,
+        projectId: request.projectId,
+      },
+      'request error',
     );
+    await reportMatuOpsError(err, {
+      url: request.url,
+      method: request.method,
+      body: request.body,
+      userId: request.userId,
+      projectId: request.projectId,
+    }).catch(() => undefined);
     const status = (error as { statusCode?: number }).statusCode ?? 500;
     return reply.status(status).send({
       error: err.message || 'Internal Server Error',

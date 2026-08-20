@@ -87,6 +87,11 @@ export const sendEmailSchema = z
      * el server usa el `default_domain_id` del proyecto.
      */
     domainId: z.string().uuid().optional(),
+    /**
+     * Opcional. Se infiere del token `mm_live_...`. Si el caller usa un JWT
+     * de MatuDB (sin projectId), debe pasarlo en el body.
+     */
+    projectId: z.string().uuid().optional(),
     replyTo: z.union([z.string().email(), z.array(z.string().email())]).optional(),
     cc: z.union([z.string().email(), z.array(z.string().email())]).optional(),
     bcc: z.union([z.string().email(), z.array(z.string().email())]).optional(),
