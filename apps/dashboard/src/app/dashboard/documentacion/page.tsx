@@ -52,7 +52,14 @@ const endpoints = [
   { method: 'POST', path: '/api/auth/register', desc: 'Registro MatuDB Auth' },
   { method: 'POST', path: '/api/auth/login', desc: 'Inicio de sesión' },
   { method: 'GET', path: '/api/projects', desc: 'Listar proyectos (sesión dashboard)' },
-  { method: 'PUT', path: '/api/smtp/:projectId', desc: 'Configurar SMTP' },
+  { method: 'GET', path: '/api/sending-identities', desc: 'Aliases listos para enviar (token API)' },
+  {
+    method: 'GET',
+    path: '/api/sending-identities/:id',
+    desc: 'Detalle de una identidad lista para enviar',
+  },
+  { method: 'GET', path: '/api/domains', desc: 'Dominios del proyecto' },
+  { method: 'GET', path: '/api/aliases', desc: 'Aliases / identidades de envío' },
   { method: 'GET', path: '/t/o/:token', desc: 'Pixel de apertura (tracking)' },
   { method: 'GET', path: '/t/c/:token?u=', desc: 'Redirect de clic trackeado' },
 ];
@@ -93,7 +100,7 @@ export default function DocsPage() {
         <CardContent className="space-y-2 text-sm text-charcoal/80">
           <ol className="list-decimal space-y-1 pl-5">
             <li>
-              Configura y <strong>verifica SMTP</strong> en este proyecto.
+              Verifica un <strong>dominio por DNS</strong> y crea al menos un <strong>alias</strong>.
             </li>
             <li>
               Crea un <strong>token de API</strong> (empieza por{' '}
@@ -422,8 +429,8 @@ MATUMAILER_API_URL=${apiUrl}`}
         <CardContent>
           <ul className="list-disc space-y-1 pl-5 text-sm text-charcoal/80">
             <li>
-              <code>SMTP_NOT_CONFIGURED</code> / <code>SMTP_NOT_VERIFIED</code> — configura SMTP en
-              el dashboard.
+              <code>NO_VERIFIED_DOMAIN</code> / <code>NO_DEFAULT_SENDING_IDENTITY</code> — verifica
+              el dominio, crea aliases y marca un remitente predeterminado.
             </li>
             <li>
               <code>TEMPLATE_NOT_FOUND</code> — slug incorrecto o plantilla de otro proyecto.

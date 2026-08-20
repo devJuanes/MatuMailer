@@ -10,7 +10,7 @@ type LandingCtaProps = {
 
 export function LandingCta({
   title = 'Tu próximo correo sale desde MatuMailer',
-  subtitle = 'Cuenta gratis, SMTP en minutos, plantillas con variables y SDK listo para producción.',
+  subtitle = 'Cuenta gratis, dominio verificado, aliases y SDK listo para producción.',
 }: LandingCtaProps) {
   return (
     <section className="relative overflow-hidden rounded-[2rem] bg-charcoal px-6 py-16 text-center sm:px-10">

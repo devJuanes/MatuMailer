@@ -4,20 +4,9 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/layout/page-header';
 import { useProjects } from '@/hooks/use-project';
-import { listEmailLogs } from '@/lib/db/email-logs';
+import { listEmailLogs, type EmailLog } from '@/lib/db/email-logs';
 import { cn } from '@/lib/utils';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-
-interface EmailLog {
-  id: string;
-  to_email: string;
-  subject: string;
-  template_slug: string | null;
-  status: string;
-  error_message?: string | null;
-  user_message?: string | null;
-  created_at: string;
-}
 
 const statusLabels: Record<string, string> = {
   sent: 'Enviado',
@@ -47,7 +36,7 @@ export default function LogsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Registro de correos"
-        description="Historial con mensajes claros cuando algo falla"
+        description="Historial con remitente, proveedor y mensajes claros cuando algo falla"
       />
 
       <div className="space-y-3">
@@ -57,9 +46,16 @@ export default function LogsPage() {
             (log.status === 'failed'
               ? 'No se pudo enviar este correo.'
               : log.status === 'sent'
-                ? 'Entregado al servidor SMTP.'
+                ? 'Entregado al relay de MatuMailer.'
                 : null);
           const open = openId === log.id;
+          const metaParts = [
+            log.from_email ? `Desde ${log.from_email}` : null,
+            log.provider ? `vía ${log.provider}` : null,
+            log.template_slug ? `Plantilla /${log.template_slug}` : null,
+            new Date(log.created_at).toLocaleString('es'),
+          ].filter(Boolean);
+
           return (
             <Card key={log.id} className={cn(log.status === 'failed' && 'border-red-200')}>
               <CardContent className="p-5">
@@ -71,10 +67,7 @@ export default function LogsPage() {
                         : `${statusLabels[log.status] ?? log.status}: ${log.to_email}`}
                     </p>
                     <p className="mt-1 truncate text-sm text-muted-foreground">{log.subject}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {log.template_slug ? `Plantilla /${log.template_slug} · ` : ''}
-                      {new Date(log.created_at).toLocaleString('es')}
-                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{metaParts.join(' · ')}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span
@@ -85,7 +78,7 @@ export default function LogsPage() {
                     >
                       {statusLabels[log.status] ?? log.status}
                     </span>
-                    {(log.error_message || log.user_message) && (
+                    {(log.error_message || log.user_message || log.message_id) && (
                       <button
                         type="button"
                         className="rounded-full p-1 hover:bg-charcoal/5"
@@ -106,7 +99,15 @@ export default function LogsPage() {
                     {log.user_message && (
                       <p className="mb-2 font-sans text-sm text-charcoal">{log.user_message}</p>
                     )}
-                    {log.error_message || 'Sin detalle técnico adicional'}
+                    {log.from_email && <p>from: {log.from_email}</p>}
+                    {log.alias_id && <p>alias_id: {log.alias_id}</p>}
+                    {log.domain_id && <p>domain_id: {log.domain_id}</p>}
+                    {log.provider && <p>provider: {log.provider}</p>}
+                    {log.message_id && <p>message_id: {log.message_id}</p>}
+                    {log.error_message ||
+                      (!log.message_id && !log.from_email
+                        ? 'Sin detalle técnico adicional'
+                        : null)}
                   </div>
                 )}
               </CardContent>

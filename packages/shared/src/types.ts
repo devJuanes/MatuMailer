@@ -4,11 +4,9 @@ import type {
   DNS_RECORD_TYPES,
   EMAIL_STATUS,
   SCHEDULED_EMAIL_STATUS,
-  SMTP_PROVIDERS,
   TEMPLATE_SLUGS,
 } from './constants';
 
-export type SmtpProvider = (typeof SMTP_PROVIDERS)[number];
 export type TemplateSlug = (typeof TEMPLATE_SLUGS)[number];
 export type EmailStatus = (typeof EMAIL_STATUS)[number];
 export type ScheduledEmailStatus = (typeof SCHEDULED_EMAIL_STATUS)[number];
@@ -31,6 +29,8 @@ export interface Project {
   name: string;
   slug: string;
   description: string | null;
+  default_domain_id?: string | null;
+  default_alias_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -48,28 +48,12 @@ export interface ApiToken {
 }
 
 export interface ProjectSetupStatus {
-  smtpConfigured: boolean;
+  hasVerifiedDomain: boolean;
   welcomeTemplate: boolean;
   hasApiToken: boolean;
   testEmailSent: boolean;
   completedCount: number;
   totalSteps: number;
-}
-
-export interface SmtpConfig {
-  id: string;
-  project_id: string;
-  provider: SmtpProvider;
-  host: string;
-  port: number;
-  secure: boolean;
-  username: string;
-  password_encrypted: string;
-  from_email: string;
-  from_name: string | null;
-  is_verified: boolean;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface TemplateBlock {
@@ -112,6 +96,11 @@ export interface EmailLog {
   campaign_id?: string | null;
   group_id?: string | null;
   tracking_token?: string | null;
+  from_email?: string | null;
+  domain_id?: string | null;
+  alias_id?: string | null;
+  provider?: string | null;
+  message_id?: string | null;
   metadata: Record<string, unknown>;
   sent_at: string | null;
   created_at: string;
@@ -156,6 +145,7 @@ export interface Campaign {
   name: string;
   template_slug: string | null;
   group_id: string | null;
+  alias_id?: string | null;
   status: string;
   scheduled_at: string | null;
   total_count: number;
@@ -191,6 +181,16 @@ export interface SendEmailPayload {
   text?: string;
   data?: Record<string, unknown>;
   scheduledAt?: string;
+  from?: string;
+  fromName?: string;
+  domainId?: string;
+  aliasId?: string;
+  projectId?: string;
+  replyTo?: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
+  headers?: Record<string, string>;
+  tags?: Array<{ name: string; value: string }>;
 }
 
 export interface ScheduledEmail {

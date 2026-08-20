@@ -14,8 +14,8 @@ import {
 export const LANDING_FEATURES = [
   {
     icon: Server,
-    title: 'SMTP automático',
-    desc: 'Conecta Gmail, Outlook, Zoho u otro proveedor. MatuMailer detecta la configuración y cifra tus credenciales.',
+    title: 'Dominios verificados',
+    desc: 'Añade tu dominio, publica SPF/DKIM/DMARC y envía desde aliases autorizados. Sin credenciales SMTP del usuario.',
   },
   {
     icon: Mail,
@@ -56,8 +56,8 @@ export const LANDING_FEATURES = [
   },
   {
     icon: Shield,
-    title: 'Credenciales seguras',
-    desc: 'SMTP cifrado por proyecto, tokens de API y cuotas por plan para no sorpresas.',
+    title: 'Identidades de envío',
+    desc: 'Tokens de API por proyecto, aliases autorizados y cuotas por plan. El usuario nunca entrega contraseñas SMTP.',
   },
 ] as const;
 
@@ -69,8 +69,8 @@ export const LANDING_STEPS = [
   },
   {
     n: '02',
-    title: 'Configura SMTP y plantillas',
-    desc: 'Añade tu proveedor de correo, diseña plantillas y prueba el envío desde el dashboard.',
+    title: 'Verifica dominio y aliases',
+    desc: 'Añade tu dominio, publica los DNS, crea aliases (hola@, soporte@) y marca un remitente predeterminado.',
   },
   {
     n: '03',
@@ -105,26 +105,26 @@ export const USE_CASES = [
 export const TRUST_SIGNALS = [
   { label: 'Plan gratis', detail: 'Empieza sin tarjeta' },
   { label: 'Hecho en Colombia', detail: 'Soporte en español' },
-  { label: 'Credenciales cifradas', detail: 'SMTP seguro' },
+  { label: 'DKIM por dominio', detail: 'Firma automática' },
   { label: 'SDK oficial npm', detail: 'Integración rápida' },
 ] as const;
 
 export const FAQ_ITEMS = [
   {
     q: '¿Qué es MatuMailer y para quién es?',
-    a: 'MatuMailer es infraestructura de correo pensada para desarrolladores, startups y equipos técnicos que necesitan enviar correos transaccionales sin montar su propio servidor SMTP.',
+    a: 'MatuMailer es infraestructura de correo pensada para desarrolladores: verificas tu dominio por DNS y envías desde aliases autorizados, sin montar ni compartir un servidor SMTP propio.',
   },
   {
     q: '¿Tiene plan gratuito?',
-    a: 'Sí. Incluye 1 proyecto, configuración SMTP, plantillas personalizadas y correos de prueba. Ideal para desarrollar e integrar antes de escalar.',
+    a: 'Sí. Incluye 1 proyecto, 1 dominio verificado, aliases, plantillas personalizadas y correos de prueba. Ideal para integrar antes de escalar.',
   },
   {
     q: '¿Qué incluye MatuMailer Premium?',
     a: 'Proyectos ilimitados, envío masivo, correos programados, plantillas sin límite y cuota ampliada. Desde $25.000 COP/mes.',
   },
   {
-    q: '¿Qué proveedores SMTP puedo usar?',
-    a: 'Gmail, Outlook, Zoho y cualquier servidor SMTP estándar. MatuMailer detecta el proveedor y te guía en la configuración.',
+    q: '¿Cómo envío correos?',
+    a: 'Verifica tu dominio por DNS, crea aliases (ventas@tudominio.com) y usa la API o el SDK. MatuMailer firma DKIM y entrega por su relay. Nunca pedimos tu contraseña de Gmail ni SMTP.',
   },
   {
     q: '¿Cómo integro MatuMailer en mi proyecto?',

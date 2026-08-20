@@ -26,21 +26,6 @@ export const createTokenSchema = z.object({
   expiresInDays: z.number().int().min(1).max(365).optional(),
 });
 
-export const smtpConfigSchema = z.object({
-  provider: z.enum(['gmail', 'outlook', 'zoho', 'custom']),
-  host: z.string().min(1),
-  port: z.number().int().min(1).max(65535),
-  secure: z.boolean().default(false),
-  username: z.string().min(1),
-  password: z.string().min(1),
-  fromEmail: z.string().email(),
-  fromName: z.string().max(100).optional(),
-});
-
-export const smtpDetectSchema = z.object({
-  email: z.string().email(),
-});
-
 const templateBlockSchema = z.object({
   id: z.string(),
   type: z.enum(['heading', 'text', 'button', 'divider', 'spacer', 'image']),
@@ -79,14 +64,16 @@ export const sendEmailSchema = z
     text: z.string().optional(),
     data: z.record(z.unknown()).optional(),
     scheduledAt: z.string().datetime().optional(),
+    /**
+     * Remitente: alias activo de un dominio verificado (`ventas@example.com`).
+     * Opcional si el proyecto tiene un solo alias o un remitente predeterminado.
+     */
     from: z.string().email().optional(),
     fromName: z.string().max(120).optional(),
-    /**
-     * Cuando el proyecto tiene varios dominios verificados, se puede forzar
-     * desde cuál enviar resolviendo el alias por `domainId`. Si no se pasa,
-     * el server usa el `default_domain_id` del proyecto.
-     */
+    /** Acota el remitente a un dominio. Si ese dominio tiene un solo alias, se usa. */
     domainId: z.string().uuid().optional(),
+    /** Alias concreto desde el cual enviar. */
+    aliasId: z.string().uuid().optional(),
     /**
      * Opcional. Se infiere del token `mm_live_...`. Si el caller usa un JWT
      * de MatuDB (sin projectId), debe pasarlo en el body.
@@ -113,6 +100,10 @@ export const scheduleEmailSchema = z
     html: z.string().optional(),
     text: z.string().optional(),
     data: z.record(z.unknown()).optional(),
+    from: z.string().email().optional(),
+    fromName: z.string().max(120).optional(),
+    domainId: z.string().uuid().optional(),
+    aliasId: z.string().uuid().optional(),
   })
   .refine((d) => !!(d.template || (d.html && d.html.length > 0)), {
     message: 'Indica una plantilla o contenido HTML',
@@ -123,6 +114,10 @@ export const analyzeEmailSchema = z.object({
   html: z.string().optional(),
   template: z.string().optional(),
   data: z.record(z.unknown()).optional(),
+  from: z.string().email().optional(),
+  fromName: z.string().max(120).optional(),
+  domainId: z.string().uuid().optional(),
+  aliasId: z.string().uuid().optional(),
 });
 
 export const sendTestEmailSchema = z
@@ -133,6 +128,10 @@ export const sendTestEmailSchema = z
     html: z.string().optional(),
     text: z.string().optional(),
     data: z.record(z.unknown()).optional(),
+    from: z.string().email().optional(),
+    fromName: z.string().max(120).optional(),
+    domainId: z.string().uuid().optional(),
+    aliasId: z.string().uuid().optional(),
   })
   .refine((d) => !!(d.template || (d.html && d.html.length > 0)), {
     message: 'Indica una plantilla o contenido HTML',
@@ -150,6 +149,10 @@ export const bulkSendEmailSchema = z.object({
   delayMs: z.number().int().min(0).max(5000).optional(),
   scheduledAt: z.string().datetime().optional(),
   campaignName: z.string().max(150).optional(),
+  from: z.string().email().optional(),
+  fromName: z.string().max(120).optional(),
+  domainId: z.string().uuid().optional(),
+  aliasId: z.string().uuid().optional(),
 });
 
 export const bulkSendFromJsonSchema = z.object({
@@ -160,6 +163,10 @@ export const bulkSendFromJsonSchema = z.object({
   excludeFields: z.array(z.string()).optional(),
   delayMs: z.number().int().min(0).max(5000).optional(),
   users: z.union([z.array(z.record(z.unknown())), z.record(z.record(z.unknown()))]),
+  from: z.string().email().optional(),
+  fromName: z.string().max(120).optional(),
+  domainId: z.string().uuid().optional(),
+  aliasId: z.string().uuid().optional(),
 });
 
 const DOMAIN_REGEX = /^(?=.{1,253}$)(?!-)([a-z0-9-]{1,63}(?<![-]))(\.[a-z0-9-]{1,63})+$/;
@@ -203,7 +210,7 @@ export const updateAliasSchema = z.object({
 });
 
 export const listAliasesQuerySchema = z.object({
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().optional(),
   domainId: z.string().uuid().optional(),
   activeOnly: z.coerce.boolean().default(false),
 });

@@ -1,10 +1,5 @@
 import { FREE_PLAN_LIMITS, type PlanTier } from '@matumailer/shared';
-import {
-  planUsageRepo,
-  smtpConfigsRepo,
-  subscriptionsRepo,
-  projectsRepo,
-} from '@matumailer/database';
+import { planUsageRepo, subscriptionsRepo, projectsRepo } from '@matumailer/database';
 
 export class PlanLimitError extends Error {
   code: string;
@@ -20,7 +15,7 @@ export class PlanLimitError extends Error {
 
 export interface PlanUsage {
   projects: number;
-  smtpConfigs: number;
+  verifiedDomains: number;
   customTemplates: number;
   testEmails: number;
   emailsInWindow: number;
@@ -44,7 +39,7 @@ export async function getPlanStatus(userId: string): Promise<PlanStatus> {
 
   const usage: PlanUsage = {
     projects: await planUsageRepo.countProjectsByUserId(userId),
-    smtpConfigs: await planUsageRepo.countSmtpConfigsByUserId(userId),
+    verifiedDomains: await planUsageRepo.countVerifiedDomainsByUserId(userId),
     customTemplates: await planUsageRepo.countCustomTemplatesByUserId(userId),
     testEmails: await planUsageRepo.countTestEmailsByUserId(userId),
     emailsInWindow: await planUsageRepo.countSentEmailsInWindow(
@@ -69,32 +64,6 @@ export async function assertCanCreateProject(userId: string): Promise<void> {
       'PROJECT_LIMIT',
       `Plan gratis: máximo ${FREE_PLAN_LIMITS.maxProjects} proyectos. Actualiza a Premium para crear más.`,
       { limit: FREE_PLAN_LIMITS.maxProjects, current: count },
-    );
-  }
-}
-
-export async function assertCanConfigureSmtp(
-  userId: string,
-  projectId: string,
-  username: string,
-): Promise<void> {
-  if (await isPremiumUser(userId)) return;
-
-  const usedElsewhere = await planUsageRepo.isSmtpUsernameUsedByOtherFreeUser(username, userId);
-  if (usedElsewhere) {
-    throw new PlanLimitError(
-      'SMTP_ALREADY_USED',
-      'Este correo SMTP ya está registrado en otra cuenta gratis. Usa otro correo o actualiza a Premium.',
-    );
-  }
-
-  const count = await planUsageRepo.countSmtpConfigsByUserId(userId);
-  const existing = await smtpConfigsRepo.findSmtpByProjectId(projectId);
-  if (!existing && count >= FREE_PLAN_LIMITS.maxSmtpConfigs) {
-    throw new PlanLimitError(
-      'SMTP_LIMIT',
-      `Plan gratis: solo ${FREE_PLAN_LIMITS.maxSmtpConfigs} configuración SMTP por cuenta.`,
-      { limit: FREE_PLAN_LIMITS.maxSmtpConfigs, current: count },
     );
   }
 }

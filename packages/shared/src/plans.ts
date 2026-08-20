@@ -55,7 +55,8 @@ export const PLAN_BY_ID = Object.fromEntries(SUBSCRIPTION_PLANS.map((p) => [p.id
 
 export const FREE_PLAN_LIMITS = {
   maxProjects: 1,
-  maxSmtpConfigs: 1,
+  maxDomains: 1,
+  maxAliases: 3,
   maxCustomTemplates: 3,
   maxTestEmails: 5,
   maxEmailsPerWindow: 10,

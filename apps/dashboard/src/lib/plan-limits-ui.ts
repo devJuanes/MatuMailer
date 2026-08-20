@@ -25,8 +25,8 @@ function resolveFreeLimit(
   const used =
     key === 'maxProjects'
       ? (plan?.usage.projects ?? fallback?.used ?? 0)
-      : key === 'maxSmtpConfigs'
-        ? (plan?.usage.smtpConfigs ?? fallback?.used ?? 0)
+      : key === 'maxDomains'
+        ? (plan?.usage.verifiedDomains ?? fallback?.used ?? 0)
         : key === 'maxCustomTemplates'
           ? (plan?.usage.customTemplates ?? fallback?.used ?? 0)
           : key === 'maxTestEmails'
@@ -53,19 +53,6 @@ export function canCreateTemplate(
 ): boolean {
   return resolveFreeLimit(plan, isPremium, 'maxCustomTemplates', {
     used: localCustomCount ?? plan?.usage.customTemplates ?? 0,
-  }).allowed;
-}
-
-export function canConfigureSmtp(
-  plan: PlanStatus | null,
-  isPremium: boolean,
-  hasSmtpOnCurrentProject: boolean,
-  localSmtpCount?: number,
-): boolean {
-  if (isPremium) return true;
-  if (hasSmtpOnCurrentProject) return true;
-  return resolveFreeLimit(plan, isPremium, 'maxSmtpConfigs', {
-    used: localSmtpCount ?? plan?.usage.smtpConfigs ?? 0,
   }).allowed;
 }
 
@@ -103,18 +90,6 @@ export function templateLimitState(
   localCustomCount: number,
 ) {
   return resolveFreeLimit(plan, isPremium, 'maxCustomTemplates', { used: localCustomCount });
-}
-
-export function smtpLimitState(
-  plan: PlanStatus | null,
-  isPremium: boolean,
-  localSmtpCount: number,
-  hasSmtpOnCurrentProject: boolean,
-) {
-  if (isPremium || hasSmtpOnCurrentProject) {
-    return { allowed: true, used: localSmtpCount, max: FREE_LIMITS.maxSmtpConfigs };
-  }
-  return resolveFreeLimit(plan, isPremium, 'maxSmtpConfigs', { used: localSmtpCount });
 }
 
 export function usageRatio(used: number, max: number): number {

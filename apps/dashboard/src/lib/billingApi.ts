@@ -22,7 +22,7 @@ export interface PlanStatus {
   subscription: Subscription | null;
   limits: {
     maxProjects: number;
-    maxSmtpConfigs: number;
+    maxDomains?: number;
     maxCustomTemplates: number;
     maxTestEmails: number;
     maxEmailsPerWindow: number;
@@ -30,7 +30,7 @@ export interface PlanStatus {
   } | null;
   usage: {
     projects: number;
-    smtpConfigs: number;
+    verifiedDomains: number;
     customTemplates: number;
     testEmails: number;
     emailsInWindow: number;

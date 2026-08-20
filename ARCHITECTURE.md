@@ -73,8 +73,8 @@
 ### 4. Shared (packages/shared)
 
 - Zod schemas (`sendEmailSchema`, `createAliasSchema`, `createDomainSchema`, etc.).
-- Tipos públicos (`Domain`, `DomainAlias`, `SmtpConfig`, `Template`, ...).
-- Helpers de SMTP y deliverability (`buildDeliverabilityReport`,
+- Tipos públicos (`Domain`, `DomainAlias`, `Template`, `Project`, ...).
+- Helpers de deliverability (`buildDeliverabilityReport`,
   `htmlToPlainText`, `sanitizeSubject`).
 
 ### 5. SDK (`matumailer`, packages/sdk)
@@ -242,7 +242,7 @@ MATUDB_URL=https://db.matudb.com
 MATUDB_PROJECT_ID=<uuid>
 MATUDB_API_KEY=<service-role key>
 JWT_SECRET=<cualquier string largo>
-ENCRYPTION_KEY=<32+ caracteres para cifrar DKIM privado + SMTP passwords>
+ENCRYPTION_KEY=<32+ caracteres para cifrar la clave DKIM privada>
 APP_URL=https://matumailer.matubyte.com   # para callbacks de billing
 ```
 
@@ -267,15 +267,21 @@ npm run build
 npm run dev   # api (4001) + dashboard (3000)
 ```
 
-## Migración desde SMTP propio
+## Migración desde SMTP propio (legado)
 
-Si tenías SMTP configurado y quieres migrar al nuevo flujo:
+El producto ya no acepta credenciales SMTP del usuario. Si migrabas desde ese modelo:
 
 1. Agrega y verifica tu dominio (`POST /api/domains`).
-2. Crea aliases en el nuevo dominio (`POST /api/aliases`).
-3. Marca el dominio como default (`POST /api/domains/:id/default`).
-4. La tabla `smtp_configs` queda intacta pero ya no se usa.
-5. Borra `smtp.routes.ts` del registro (ya hecho).
+2. Crea aliases en el dominio verificado (`POST /api/aliases`).
+3. Marca un remitente predeterminado (`PATCH /api/aliases/:id` con `isDefault` o default del proyecto).
+4. La tabla `smtp_configs` se elimina con `migrate-sending-identities.sql`.
+5. El envío usa `resolveSendingIdentity` → `EmailProvider` (relay Postfix de plataforma + DKIM por dominio).
+
+Flujo actual:
+
+```text
+Project → Domain (DNS verified) → Alias (sending identity) → Email API → Provider → Recipient
+```
 
 ## Decisiones de diseño
 

@@ -37,15 +37,23 @@ export async function domainsRoutes(app: FastifyInstance) {
   server.get(
     '/',
     {
-      preHandler: [app.authenticate],
+      preHandler: [app.authenticateApiToken],
       schema: {
-        querystring: z.object({ projectId: z.string().uuid() }),
+        querystring: z.object({ projectId: z.string().uuid().optional() }),
         tags: ['Domains'],
       },
     },
     async (request, reply) => {
-      const project = await projectsRepo.findProjectById(request.query.projectId);
-      if (!ensureProjectAccess(project, request.userId!)) {
+      const projectId = request.projectId ?? request.query.projectId;
+      if (!projectId) {
+        return reply.status(400).send({ error: 'PROJECT_REQUIRED' });
+      }
+      if (request.projectId && request.query.projectId && request.projectId !== request.query.projectId) {
+        return reply.status(403).send({ error: 'DOMAIN_NOT_ALLOWED_FOR_PROJECT' });
+      }
+      const project = await projectsRepo.findProjectById(projectId);
+      if (!project) return reply.status(404).send({ error: 'Not Found' });
+      if (request.userId && !ensureProjectAccess(project, request.userId)) {
         return reply.status(404).send({ error: 'Not Found' });
       }
       const domains = await domainsRepo.listDomainsByProject(project.id);

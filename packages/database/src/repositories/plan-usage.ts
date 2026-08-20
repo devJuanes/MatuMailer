@@ -1,7 +1,7 @@
 import { FREE_PLAN_LIMITS } from '@matumailer/shared';
 import { getMatuDb } from '../client';
 import * as projectsRepo from './projects';
-import * as subscriptionsRepo from './subscriptions';
+import { listDomainsByProject } from './domains';
 
 export async function countProjectsByUserId(userId: string): Promise<number> {
   const projects = await projectsRepo.findProjectsByUserId(userId);
@@ -26,20 +26,13 @@ export async function countCustomTemplatesByUserId(userId: string): Promise<numb
   return total;
 }
 
-export async function countSmtpConfigsByUserId(userId: string): Promise<number> {
-  const db = getMatuDb();
+export async function countVerifiedDomainsByUserId(userId: string): Promise<number> {
   const projects = await projectsRepo.findProjectsByUserId(userId);
   if (projects.length === 0) return 0;
-
   let total = 0;
   for (const project of projects) {
-    const { data, error } = await db
-      .from('smtp_configs')
-      .select('id')
-      .eq('project_id', project.id)
-      .limit(1);
-    if (error) throw new Error(error.message);
-    if (data?.length) total += 1;
+    const domains = await listDomainsByProject(project.id);
+    total += domains.filter((d) => d.status === 'verified').length;
   }
   return total;
 }
@@ -83,29 +76,6 @@ export async function countSentEmailsInWindow(userId: string, hours: number): Pr
     total += (data ?? []).length;
   }
   return total;
-}
-
-export async function isSmtpUsernameUsedByOtherFreeUser(
-  username: string,
-  currentUserId: string,
-): Promise<boolean> {
-  const db = getMatuDb();
-  const normalized = username.trim().toLowerCase();
-
-  const { data: smtpRows, error } = await db.from('smtp_configs').select('project_id, username');
-  if (error) throw new Error(error.message);
-
-  for (const smtp of smtpRows ?? []) {
-    if (String(smtp.username).trim().toLowerCase() !== normalized) continue;
-
-    const project = await projectsRepo.findProjectById(smtp.project_id);
-    if (!project || project.user_id === currentUserId) continue;
-
-    const active = await subscriptionsRepo.findActiveSubscription(project.user_id);
-    if (!active) return true;
-  }
-
-  return false;
 }
 
 export function getFreeLimitsSummary() {

@@ -24,9 +24,10 @@
   },
   "keywords": [
     "email",
-    "smtp",
+    "transactional-email",
     "matumailer",
-    "transactional-email"
+    "dkim",
+    "api"
   ],
   "license": "MIT",
   "repository": {

@@ -57,7 +57,7 @@ export default function DashboardPage() {
   const tasks = setup
     ? [
         {
-          label: 'Verificar tu primer dominio',
+          label: 'Verificar dominio y crear un alias',
           done: setup.hasVerifiedDomain,
           href: '/dashboard/domains',
         },
@@ -89,7 +89,7 @@ export default function DashboardPage() {
             <div>
               <p className="font-bold text-charcoal">¡Proyecto listo para producción!</p>
               <p className="text-sm text-muted-foreground">
-                SMTP, plantilla, token y prueba completados. Empieza a enviar desde tu app.
+                Dominio verificado, alias, plantilla, token y prueba listos. Empieza a enviar desde tu app.
               </p>
             </div>
           </div>

@@ -7,6 +7,7 @@ export async function create(input: {
   name: string;
   template_slug?: string | null;
   group_id?: string | null;
+  alias_id?: string | null;
   status?: string;
   scheduled_at?: string | null;
   total_count?: number;
@@ -16,6 +17,7 @@ export async function create(input: {
     name: input.name,
     template_slug: input.template_slug ?? null,
     group_id: input.group_id ?? null,
+    alias_id: input.alias_id ?? null,
     status: input.status ?? 'pending',
     scheduled_at: input.scheduled_at ?? null,
     total_count: input.total_count ?? 0,

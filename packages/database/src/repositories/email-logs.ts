@@ -42,6 +42,8 @@ export async function updateEmailLogStatus(
     user_message?: string;
     sent_at?: string;
     tracking_token?: string;
+    message_id?: string | null;
+    provider?: string | null;
   },
 ): Promise<void> {
   await updateMany('email_logs', [{ column: 'id', value: id }], { status, ...extra });

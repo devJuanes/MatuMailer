@@ -141,9 +141,9 @@ export default function PremiumPage() {
           <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 text-sm">
             <UsageItem label="Proyectos" used={plan.usage.projects} max={plan.limits.maxProjects} />
             <UsageItem
-              label="SMTP"
-              used={plan.usage.smtpConfigs}
-              max={plan.limits.maxSmtpConfigs}
+              label="Dominios"
+              used={plan.usage.verifiedDomains}
+              max={plan.limits.maxDomains ?? 1}
             />
             <UsageItem
               label="Plantillas"

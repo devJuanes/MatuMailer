@@ -10,11 +10,10 @@ export interface SendEmailPayload {
   from?: string;
   fromName?: string;
   /**
-   * Forzar el dominio verificado cuando el proyecto tiene varios. Si se omite,
-   * el server usa el `default_domain_id` del proyecto y, si no, el primer
-   * dominio verificado con un alias activo.
+   * `from` o `aliasId` son opcionales si hay un solo alias o un remitente predeterminado.
    */
   domainId?: string;
+  aliasId?: string;
   replyTo?: string | string[];
   cc?: string | string[];
   bcc?: string | string[];
@@ -36,6 +35,8 @@ export interface BulkSendPayload {
   campaignName?: string;
   from?: string;
   fromName?: string;
+  domainId?: string;
+  aliasId?: string;
   replyTo?: string | string[];
   cc?: string | string[];
   bcc?: string | string[];
@@ -51,6 +52,10 @@ export interface BulkSendFromJsonPayload {
   excludeFields?: string[];
   delayMs?: number;
   users: Record<string, Record<string, unknown>> | Array<Record<string, unknown>>;
+  from?: string;
+  fromName?: string;
+  domainId?: string;
+  aliasId?: string;
 }
 
 export interface BulkSendResult {
@@ -73,6 +78,10 @@ export interface GroupSendPayload {
   data?: Record<string, unknown>;
   scheduledAt?: string;
   campaignName?: string;
+  from?: string;
+  fromName?: string;
+  domainId?: string;
+  aliasId?: string;
 }
 
 export interface GroupSendResult {
@@ -88,14 +97,6 @@ export interface GroupSendResult {
 export interface MatuMailerConfig {
   token: string;
   baseUrl?: string;
-}
-
-export interface SmtpPreset {
-  provider: string;
-  host: string;
-  port: number;
-  secure: boolean;
-  domains: string[];
 }
 
 export interface DomainRecord {
@@ -168,4 +169,15 @@ export interface UpdateAliasPayload {
   replyTo?: string | null;
   isActive?: boolean;
   isDefault?: boolean;
+}
+
+export interface SendingIdentity {
+  id: string;
+  email: string;
+  alias: string;
+  domain: string;
+  domainId: string;
+  displayName: string | null;
+  isDefault: boolean;
+  status: 'ready';
 }

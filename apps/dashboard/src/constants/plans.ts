@@ -50,7 +50,8 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
 
 export const FREE_PLAN_FEATURES = [
   '1 proyecto',
-  '1 configuración SMTP (única por cuenta)',
+  '1 dominio verificado',
+  '3 aliases de envío',
   '3 plantillas personalizadas',
   '5 correos de prueba',
   '10 correos cada 10 horas',
@@ -59,7 +60,7 @@ export const FREE_PLAN_FEATURES = [
 /** Límites plan gratis — espejo de @matumailer/shared para checks instantáneos en UI */
 export const FREE_LIMITS = {
   maxProjects: 1,
-  maxSmtpConfigs: 1,
+  maxDomains: 1,
   maxCustomTemplates: 3,
   maxTestEmails: 5,
   maxEmailsPerWindow: 10,
@@ -68,7 +69,7 @@ export const FREE_LIMITS = {
 
 export const PREMIUM_PLAN_FEATURES = [
   'Proyectos ilimitados',
-  'SMTP en todos tus proyectos',
+  'Dominios y aliases ilimitados',
   'Plantillas ilimitadas',
   'Envío masivo',
   'Envíos programados',

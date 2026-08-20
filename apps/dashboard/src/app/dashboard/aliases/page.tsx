@@ -133,7 +133,7 @@ export default function AliasesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Aliases"
-        description="Crea identidades de envío (info@dominio.com, hola@, soporte@). Cualquier alias activo se puede usar como `from` al enviar."
+        description="Crea identidades de envío (info@dominio.com, hola@, soporte@). Marca una como remitente predeterminado para no tener que indicar `from` en la API."
       />
 
       {error && <p className="rounded-2xl bg-red-50 px-4 py-2 text-sm text-red-800">{error}</p>}
@@ -312,7 +312,7 @@ export default function AliasesPage() {
                           {a.is_default ? (
                             <span className="rounded-full bg-gold/30 px-2 py-0.5 text-xs font-medium text-charcoal">
                               <Star className="mr-1 inline h-3 w-3" />
-                              default
+                              remitente predeterminado
                             </span>
                           ) : (
                             <Button
@@ -321,7 +321,7 @@ export default function AliasesPage() {
                               onClick={() => handleSetDefault(a)}
                             >
                               <StarOff className="mr-1 h-3.5 w-3.5" />
-                              Marcar default
+                              Marcar como remitente predeterminado
                             </Button>
                           )}
                           <Button

@@ -5,10 +5,10 @@ SDK oficial de [MatuMailer](https://mail.matucatalogo.com) para enviar correos t
 ## Requisitos previos
 
 1. Cuenta y **proyecto** en el [dashboard](https://mail.matucatalogo.com).
-2. **SMTP** configurado y verificado en ese proyecto.
+2. **Dominio verificado por DNS** (DKIM + SPF) y al menos un **alias activo** (ej: `soporte@tudominio.com`).
 3. **Token de API** (`mm_live_...`) generado en el proyecto.
 
-Sin SMTP verificado la API no enviará correos.
+*Nota:* Si tienes un solo dominio y alias, MatuMailer enviará automáticamente desde ese correo sin necesidad de especificar `from`. Si tienes múltiples aliases, puedes indicar `from: 'ventas@tudominio.com'`.
 
 ## Instalación
 
@@ -37,11 +37,21 @@ const mail = new MatuMailer({
 ## Correo libre (HTML propio)
 
 ```ts
-await mail.send({
+// Envío con alias por defecto:
+await mail.emails.send({
   to: 'usuario@ejemplo.com',
   subject: 'Asunto del correo',
   html: '<h1>Hola</h1><p>Contenido que tú escribes</p>',
   text: 'Versión texto plano (opcional)',
+});
+
+// O indicando un alias específico:
+await mail.send({
+  from: 'soporte@tudominio.com',
+  fromName: 'Soporte al Cliente',
+  to: 'usuario@ejemplo.com',
+  subject: 'Asunto del correo',
+  html: '<h1>Hola</h1><p>Contenido que tú escribes</p>',
 });
 ```
 
@@ -108,7 +118,9 @@ await mail.send({
 | `sendBulk(payload)`                       | POST `/api/emails/send/bulk`                            |
 | `sendBulkFromJson(payload)`               | Bulk desde JSON de usuarios                             |
 | `sendToGroup(payload)`                    | POST `/api/emails/send/group`                           |
-| `detectSmtp(email)`                       | Sugiere preset SMTP (Gmail, Outlook, etc.)              |
+| `sendingIdentities.list()`                | GET `/api/sending-identities`                           |
+| `sendingIdentities.get(id)`               | GET `/api/sending-identities/:id`                       |
+| `domains.list()` / `aliases.list()`       | Dominios y aliases del proyecto                         |
 
 ### `SendEmailPayload`
 

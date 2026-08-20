@@ -85,7 +85,7 @@ export default function HomePage() {
                   Correo transaccional sin montar infraestructura
                 </h1>
                 <p className="landing-fade-up landing-fade-up-delay-1 mt-5 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg">
-                  SMTP, plantillas con variables, grupos y un SDK npm. Un token y listo — por{' '}
+                  Dominios verificados, aliases, plantillas y un SDK npm. Un token y listo — por{' '}
                   <a
                     href={MATUBYTE.url}
                     target="_blank"
@@ -189,7 +189,7 @@ await mail.sendTemplate('usuario@empresa.com', 'welcome', {
             <LandingSection
               id="funciones"
               title="Todo lo que necesitas para enviar correo"
-              subtitle="Desde SMTP hasta analíticas — una plataforma pensada para developers."
+              subtitle="Desde dominios verificados hasta analíticas — una plataforma pensada para developers."
             >
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {LANDING_FEATURES.map((f) => (

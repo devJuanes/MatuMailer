@@ -76,6 +76,9 @@ CREATE INDEX IF NOT EXISTS idx_mailer_projects_user_id ON mailer_projects(user_i
     ON mailer_domain_aliases(domain_id)
     WHERE is_default = TRUE;
 
+  ALTER TABLE mailer_projects
+    ADD COLUMN IF NOT EXISTS default_alias_id UUID REFERENCES mailer_domain_aliases(id) ON DELETE SET NULL;
+
   CREATE TABLE IF NOT EXISTS mailer_domain_dns_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     domain_id UUID NOT NULL REFERENCES mailer_domains(id) ON DELETE CASCADE,
@@ -105,6 +108,7 @@ CREATE INDEX IF NOT EXISTS idx_mailer_projects_user_id ON mailer_projects(user_i
     token_hash VARCHAR(255) NOT NULL UNIQUE,
     token_prefix VARCHAR(20) NOT NULL,
     token_encrypted TEXT,
+    scopes TEXT[] NOT NULL DEFAULT ARRAY['*']::TEXT[],
     last_used_at TIMESTAMPTZ,
     expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -116,29 +120,9 @@ CREATE INDEX IF NOT EXISTS idx_mailer_projects_user_id ON mailer_projects(user_i
   -- Onboarding / checklist por proyecto
   CREATE TABLE IF NOT EXISTS project_onboarding (
     project_id UUID PRIMARY KEY REFERENCES mailer_projects(id) ON DELETE CASCADE,
-    smtp_completed_at TIMESTAMPTZ,
     test_email_sent_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
-
-  -- SMTP Configs
-  CREATE TABLE IF NOT EXISTS smtp_configs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL UNIQUE REFERENCES mailer_projects(id) ON DELETE CASCADE,
-    provider VARCHAR(20) NOT NULL DEFAULT 'custom',
-    host VARCHAR(255) NOT NULL,
-    port INTEGER NOT NULL DEFAULT 587,
-    secure BOOLEAN NOT NULL DEFAULT FALSE,
-    username VARCHAR(255) NOT NULL,
-    password_encrypted TEXT NOT NULL,
-    from_email VARCHAR(255) NOT NULL,
-    from_name VARCHAR(100),
-    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_smtp_configs_project_id ON smtp_configs(project_id);
 
   -- Templates
   CREATE TABLE IF NOT EXISTS templates (
@@ -208,6 +192,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   name VARCHAR(150) NOT NULL,
   template_slug VARCHAR(50),
   group_id UUID REFERENCES contact_groups(id) ON DELETE SET NULL,
+  alias_id UUID REFERENCES mailer_domain_aliases(id) ON DELETE SET NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'pending',
   scheduled_at TIMESTAMPTZ,
   total_count INTEGER NOT NULL DEFAULT 0,
@@ -231,6 +216,11 @@ CREATE INDEX IF NOT EXISTS idx_campaigns_project_id ON campaigns(project_id);
     campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
     group_id UUID REFERENCES contact_groups(id) ON DELETE SET NULL,
     tracking_token VARCHAR(64),
+    from_email VARCHAR(255),
+    domain_id UUID REFERENCES mailer_domains(id) ON DELETE SET NULL,
+    alias_id UUID REFERENCES mailer_domain_aliases(id) ON DELETE SET NULL,
+    provider VARCHAR(40),
+    message_id VARCHAR(255),
     metadata JSONB NOT NULL DEFAULT '{}',
     sent_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -328,11 +318,7 @@ DROP TRIGGER IF EXISTS mailer_projects_updated_at ON mailer_projects;
 CREATE TRIGGER mailer_projects_updated_at BEFORE UPDATE ON mailer_projects
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-  DROP TRIGGER IF EXISTS smtp_configs_updated_at ON smtp_configs;
-  CREATE TRIGGER smtp_configs_updated_at BEFORE UPDATE ON smtp_configs
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-  DROP TRIGGER IF EXISTS templates_updated_at ON templates;
+DROP TRIGGER IF EXISTS templates_updated_at ON templates;
   CREATE TRIGGER templates_updated_at BEFORE UPDATE ON templates
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

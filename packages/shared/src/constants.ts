@@ -3,8 +3,6 @@ export const API_TOKEN_PREFIX_TEST = 'mm_test_';
 
 export const TEMPLATE_SLUGS = ['welcome', 'password-recovery', 'notification', 'campana'] as const;
 
-export const SMTP_PROVIDERS = ['gmail', 'outlook', 'zoho', 'custom'] as const;
-
 export const EMAIL_STATUS = ['queued', 'sent', 'failed', 'bounced'] as const;
 
 export const SCHEDULED_EMAIL_STATUS = [

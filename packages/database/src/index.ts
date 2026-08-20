@@ -13,7 +13,6 @@ export * as usersRepo from './repositories/users';
 export * as sessionsRepo from './repositories/sessions';
 export * as projectsRepo from './repositories/projects';
 export * as apiTokensRepo from './repositories/api-tokens';
-export * as smtpConfigsRepo from './repositories/smtp-configs';
 export * as templatesRepo from './repositories/templates';
 export * as emailLogsRepo from './repositories/email-logs';
 export * as onboardingRepo from './repositories/onboarding';

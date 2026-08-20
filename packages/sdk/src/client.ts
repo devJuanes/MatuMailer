@@ -12,10 +12,11 @@ import type {
   GroupSendResult,
   MatuMailerConfig,
   SendEmailPayload,
+  SendingIdentity,
   UpdateAliasPayload,
 } from './types.js';
 import { MatuMailerError, parseApiError } from './errors.js';
-import { detectSmtp, loadEnvToken } from './smtp-detect.js';
+import { loadEnvToken } from './env-token.js';
 
 const DEFAULT_BASE_URL = 'https://api.matucatalogo.com';
 
@@ -39,6 +40,40 @@ export class MatuMailer {
   private readonly token: string;
   private readonly baseUrl: string;
 
+  readonly emails: {
+    send: (payload: SendEmailPayload) => Promise<{ id: string; status: string; from?: string }>;
+    sendBulk: (payload: BulkSendPayload) => Promise<BulkSendResult>;
+    sendBulkFromJson: (payload: BulkSendFromJsonPayload) => Promise<BulkSendResult>;
+    sendToGroup: (payload: GroupSendPayload) => Promise<GroupSendResult>;
+  };
+
+  readonly domains: {
+    list: (projectId?: string) => Promise<{ domains: DomainRecord[] }>;
+    create: (projectId: string, payload: CreateDomainPayload) => Promise<{ domain: DomainWithRecords }>;
+    get: (domainId: string) => Promise<{ domain: DomainWithRecords }>;
+    verify: (domainId: string) => Promise<DomainVerifyResult>;
+    delete: (domainId: string) => Promise<{ deleted: boolean }>;
+    setDefault: (domainId: string) => Promise<{ domain: string; isDefault: boolean }>;
+  };
+
+  readonly aliases: {
+    list: (
+      projectId?: string,
+      opts?: { domainId?: string; activeOnly?: boolean },
+    ) => Promise<{ aliases: Alias[] }>;
+    create: (projectId: string, payload: CreateAliasPayload) => Promise<{ alias: Alias }>;
+    update: (aliasId: string, payload: UpdateAliasPayload) => Promise<{ alias: Alias }>;
+    delete: (aliasId: string) => Promise<{ deleted: boolean }>;
+  };
+
+  readonly sendingIdentities: {
+    list: (projectId?: string) => Promise<{
+      identities: SendingIdentity[];
+      defaultSendingIdentityId: string | null;
+    }>;
+    get: (id: string, projectId?: string) => Promise<{ identity: SendingIdentity }>;
+  };
+
   constructor(config?: MatuMailerConfig) {
     const token = config?.token ?? loadEnvToken();
     if (!token) {
@@ -52,9 +87,34 @@ export class MatuMailer {
       /\/$/,
       '',
     );
+
+    this.emails = {
+      send: (payload) => this.send(payload),
+      sendBulk: (payload) => this.sendBulk(payload),
+      sendBulkFromJson: (payload) => this.sendBulkFromJson(payload),
+      sendToGroup: (payload) => this.sendToGroup(payload),
+    };
+    this.domains = {
+      list: (projectId) => this.listDomains(projectId),
+      create: (projectId, payload) => this.createDomain(projectId, payload),
+      get: (domainId) => this.getDomain(domainId),
+      verify: (domainId) => this.verifyDomain(domainId),
+      delete: (domainId) => this.deleteDomain(domainId),
+      setDefault: (domainId) => this.setDefaultDomain(domainId),
+    };
+    this.aliases = {
+      list: (projectId, opts) => this.listAliases(projectId, opts),
+      create: (projectId, payload) => this.createAlias(projectId, payload),
+      update: (aliasId, payload) => this.updateAlias(aliasId, payload),
+      delete: (aliasId) => this.deleteAlias(aliasId),
+    };
+    this.sendingIdentities = {
+      list: (projectId) => this.listSendingIdentities(projectId),
+      get: (id, projectId) => this.getSendingIdentity(id, projectId),
+    };
   }
 
-  async send(payload: SendEmailPayload): Promise<{ id: string; status: string }> {
+  async send(payload: SendEmailPayload): Promise<{ id: string; status: string; from?: string }> {
     return this.request('/api/emails/send', { method: 'POST', body: payload });
   }
 
@@ -67,27 +127,22 @@ export class MatuMailer {
     return this.send({ to, template, data, subject });
   }
 
-  /** Envío masivo: un correo individual por destinatario (privacidad total). */
   async sendBulk(payload: BulkSendPayload): Promise<BulkSendResult> {
     return this.request('/api/emails/send/bulk', { method: 'POST', body: payload });
   }
 
-  /** Envío masivo desde JSON de usuarios (objeto o array). */
   async sendBulkFromJson(payload: BulkSendFromJsonPayload): Promise<BulkSendResult> {
     return this.request('/api/emails/send/bulk-from-json', { method: 'POST', body: payload });
   }
 
-  /** Envío a un grupo de contactos (inmediato o programado). */
   async sendToGroup(payload: GroupSendPayload): Promise<GroupSendResult> {
     return this.request('/api/emails/send/group', { method: 'POST', body: payload });
   }
 
-  /** Lista los dominios configurados para el proyecto. */
-  async listDomains(projectId: string): Promise<{ domains: DomainRecord[] }> {
+  async listDomains(projectId?: string): Promise<{ domains: DomainRecord[] }> {
     return this.request(`/api/domains${buildQuery({ projectId })}`, { method: 'GET' });
   }
 
-  /** Añade un nuevo dominio y devuelve los registros DNS a publicar. */
   async createDomain(
     projectId: string,
     payload: CreateDomainPayload,
@@ -98,31 +153,24 @@ export class MatuMailer {
     });
   }
 
-  /** Obtiene un dominio con sus registros DNS. */
   async getDomain(domainId: string): Promise<{ domain: DomainWithRecords }> {
     return this.request(`/api/domains/${domainId}`, { method: 'GET' });
   }
 
-  /** Re-verifica los registros DNS de un dominio. */
   async verifyDomain(domainId: string): Promise<DomainVerifyResult> {
     return this.request(`/api/domains/${domainId}/verify`, { method: 'POST' });
   }
 
-  /** Elimina un dominio del proyecto. */
   async deleteDomain(domainId: string): Promise<{ deleted: boolean }> {
     return this.request(`/api/domains/${domainId}`, { method: 'DELETE' });
   }
 
-  /** Marca un dominio verificado como remitente por defecto del proyecto. */
   async setDefaultDomain(domainId: string): Promise<{ domain: string; isDefault: boolean }> {
     return this.request(`/api/domains/${domainId}/default`, { method: 'POST' });
   }
 
-  // ─── Aliases ──────────────────────────────────────────────────────────────
-
-  /** Lista aliases de un proyecto. `domainId` opcional para filtrar por dominio. */
   async listAliases(
-    projectId: string,
+    projectId?: string,
     opts: { domainId?: string; activeOnly?: boolean } = {},
   ): Promise<{ aliases: Alias[] }> {
     const qs = buildQuery({
@@ -133,7 +181,6 @@ export class MatuMailer {
     return this.request(`/api/aliases${qs}`, { method: 'GET' });
   }
 
-  /** Crea un alias. El `localPart` es la parte antes del `@` (ej: "support"). */
   async createAlias(projectId: string, payload: CreateAliasPayload): Promise<{ alias: Alias }> {
     return this.request(`/api/aliases?projectId=${projectId}`, {
       method: 'POST',
@@ -141,7 +188,6 @@ export class MatuMailer {
     });
   }
 
-  /** Edita un alias. Solo los campos provistos se actualizan. */
   async updateAlias(aliasId: string, payload: UpdateAliasPayload): Promise<{ alias: Alias }> {
     return this.request(`/api/aliases/${aliasId}`, {
       method: 'PATCH',
@@ -149,13 +195,24 @@ export class MatuMailer {
     });
   }
 
-  /** Elimina un alias. */
   async deleteAlias(aliasId: string): Promise<{ deleted: boolean }> {
     return this.request(`/api/aliases/${aliasId}`, { method: 'DELETE' });
   }
 
-  detectSmtp(email: string) {
-    return detectSmtp(email);
+  async listSendingIdentities(projectId?: string): Promise<{
+    identities: SendingIdentity[];
+    defaultSendingIdentityId: string | null;
+  }> {
+    return this.request(`/api/sending-identities${buildQuery({ projectId })}`, { method: 'GET' });
+  }
+
+  async getSendingIdentity(
+    id: string,
+    projectId?: string,
+  ): Promise<{ identity: SendingIdentity }> {
+    return this.request(`/api/sending-identities/${id}${buildQuery({ projectId })}`, {
+      method: 'GET',
+    });
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {

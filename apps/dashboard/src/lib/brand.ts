@@ -35,7 +35,7 @@ export const APP = {
   name: 'MatuMailer',
   fullName: 'MatuMailer',
   description: 'Infraestructura de correo para desarrolladores',
-  tagline: 'SMTP, plantillas, SDK y entrega confiable para tu producto',
+  tagline: 'Dominios verificados, aliases, SDK y entrega confiable para tu producto',
   logo: '/matumailer.png',
   favicon: '/matumailer.png',
   themeColor: '#f59e0b',

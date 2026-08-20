@@ -62,16 +62,24 @@ export async function aliasesRoutes(app: FastifyInstance) {
   server.get(
     '/',
     {
-      preHandler: [app.authenticate],
+      preHandler: [app.authenticateApiToken],
       schema: { querystring: listAliasesQuerySchema, tags: ['Aliases'] },
     },
     async (request, reply) => {
-      const proj = await projectsRepo.findProjectById(request.query.projectId);
-      if (!ensureProjectAccess(proj, request.userId)) {
+      const projectId = request.projectId ?? request.query.projectId;
+      if (!projectId) {
+        return reply.status(400).send({ error: 'PROJECT_REQUIRED' });
+      }
+      if (request.projectId && request.query.projectId && request.projectId !== request.query.projectId) {
+        return reply.status(403).send({ error: 'SENDING_IDENTITY_NOT_ALLOWED' });
+      }
+      const proj = await projectsRepo.findProjectById(projectId);
+      if (!proj) return reply.status(404).send({ error: 'Not Found' });
+      if (request.userId && !ensureProjectAccess(proj, request.userId)) {
         return reply.status(404).send({ error: 'Not Found' });
       }
 
-      const aliases = await aliasesRepo.listAliases(request.query.projectId, {
+      const aliases = await aliasesRepo.listAliases(proj.id, {
         domainId: request.query.domainId,
         activeOnly: request.query.activeOnly,
       });
@@ -104,9 +112,9 @@ export async function aliasesRoutes(app: FastifyInstance) {
       const fullEmail = `${localPart.toLowerCase()}@${domain.domain}`;
 
       try {
-        // Si marca `is_default=true`, desmarcamos los demás del mismo dominio
-        // para honrar el índice único parcial.
-        if (isDefault) await aliasesRepo.unsetDefaultInDomain(domainId);
+        if (isDefault) {
+          await aliasesRepo.unsetDefaultInProject(domain.project_id);
+        }
 
         const alias = await aliasesRepo.createAlias({
           domain_id: domainId,
@@ -117,6 +125,16 @@ export async function aliasesRoutes(app: FastifyInstance) {
           is_active: isActive,
           is_default: isDefault,
         });
+
+        if (isDefault) {
+          await projectsRepo.setDefaultAlias(domain.project_id, alias.id);
+        } else {
+          const sendable = await aliasesRepo.listSendableAliases(domain.project_id);
+          if (sendable.length === 1) {
+            await aliasesRepo.updateAlias(alias.id, { is_default: true });
+            await projectsRepo.setDefaultAlias(domain.project_id, alias.id);
+          }
+        }
 
         return reply.status(201).send({ alias });
       } catch (err) {
@@ -155,7 +173,7 @@ export async function aliasesRoutes(app: FastifyInstance) {
       if (body.isActive !== undefined) updates.is_active = body.isActive;
 
       if (body.isDefault === true) {
-        await aliasesRepo.unsetDefaultInDomain(existing.domain_id);
+        await aliasesRepo.unsetDefaultInProject(existing.mailer_domains.project_id);
         updates.is_default = true;
       } else if (body.isDefault === false) {
         updates.is_default = false;
@@ -163,6 +181,11 @@ export async function aliasesRoutes(app: FastifyInstance) {
 
       try {
         const updated = await aliasesRepo.updateAlias(request.params.id, updates);
+        if (body.isDefault === true) {
+          await projectsRepo.setDefaultAlias(existing.mailer_domains.project_id, updated.id);
+        } else if (body.isDefault === false && existing.is_default) {
+          await projectsRepo.setDefaultAlias(existing.mailer_domains.project_id, null);
+        }
         return { alias: updated };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Update failed';

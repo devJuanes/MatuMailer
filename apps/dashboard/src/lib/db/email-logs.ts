@@ -9,6 +9,11 @@ export interface EmailLog {
   error_message?: string | null;
   user_message?: string | null;
   created_at: string;
+  from_email?: string | null;
+  domain_id?: string | null;
+  alias_id?: string | null;
+  provider?: string | null;
+  message_id?: string | null;
 }
 
 export async function listEmailLogs(

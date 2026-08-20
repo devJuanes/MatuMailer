@@ -4,7 +4,7 @@ import { AppLogo } from '@/components/brand/AppLogo';
 import { APP, MATUBYTE } from '@/lib/brand';
 
 const HIGHLIGHTS = [
-  { icon: Server, text: 'SMTP automático' },
+  { icon: Server, text: 'Dominio verificado' },
   { icon: Mail, text: 'Plantillas dinámicas' },
   { icon: Code2, text: 'SDK npm + API' },
 ] as const;

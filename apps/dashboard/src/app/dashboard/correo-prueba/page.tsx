@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { Send, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { listAliases, type Alias } from '@/lib/db/aliases';
 
 interface DeliverabilityReport {
   score: number;
@@ -35,6 +36,8 @@ export default function CorreoPruebaPage() {
   const { activeId } = useProjects();
   const { plan, isPremium, refresh: refreshPlan } = usePlan();
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [aliases, setAliases] = useState<Alias[]>([]);
+  const [aliasId, setAliasId] = useState('');
   const [mode, setMode] = useState<SendMode>('template');
   const [to, setTo] = useState('');
   const [template, setTemplate] = useState('welcome');
@@ -55,12 +58,18 @@ export default function CorreoPruebaPage() {
   const allowTest = canSendTestEmail(plan, isPremium, testUsed);
   const allowSend = canSendEmail(plan, isPremium, emailUsed);
   const canSendNow = allowTest && allowSend;
+  const selectedAlias = aliases.find((a) => a.id === aliasId);
 
   useEffect(() => {
     if (!activeId) return;
     api<{ templates: Template[] }>(`/api/templates/${activeId}`).then((r) => {
       setTemplates(r.templates);
       if (r.templates[0]) setTemplate(r.templates[0].slug);
+    });
+    listAliases(activeId, { activeOnly: true }).then((rows) => {
+      setAliases(rows);
+      const preferred = rows.find((a) => a.is_default) ?? rows[0];
+      setAliasId(preferred?.id ?? '');
     });
   }, [activeId]);
 
@@ -92,11 +101,15 @@ export default function CorreoPruebaPage() {
   }, [activeId, mode, template, subject, html, dataJson]);
 
   async function sendTest() {
-    if (!activeId || !to || !canSendNow) return;
+    if (!activeId || !to || !canSendNow || !aliasId) return;
     setSending(true);
     setMessage('');
     try {
-      const body: Record<string, unknown> = { to };
+      const body: Record<string, unknown> = {
+        to,
+        aliasId,
+        ...(selectedAlias ? { from: selectedAlias.full_email } : {}),
+      };
       if (mode === 'template') {
         let data = {};
         try {
@@ -123,14 +136,16 @@ export default function CorreoPruebaPage() {
       const msg = e instanceof Error ? e.message : 'Error al enviar';
       if (msg.includes('Premium') || msg.includes('gratis') || msg.includes('Límite')) {
         setMessage(msg);
-      } else if (msg.includes('SMTP_FROM_DOMAIN_MISMATCH')) {
+      } else if (
+        msg.includes('NO_VERIFIED_DOMAIN') ||
+        msg.includes('DOMAIN_NOT_VERIFIED') ||
+        msg.includes('NO_ALIAS')
+      ) {
         setMessage(
-          'El correo remitente debe ser del mismo dominio que el usuario SMTP (ej. ambos @gmail.com).',
+          'Verifica un dominio por DNS y crea un alias (ej. hola@tudominio.com) antes de enviar.',
         );
-      } else if (msg.includes('SMTP_NOT_VERIFIED') || msg.includes('SMTP_NOT_CONFIGURED')) {
-        setMessage(
-          'Configura SMTP y pulsa «Probar conexión» antes de enviar. ' + 'Ve a Configuración SMTP.',
-        );
+      } else if (msg.includes('NO_DEFAULT_SENDING_IDENTITY')) {
+        setMessage('Hay varios remitentes. Elige uno abajo o márcalo como predeterminado.');
       } else {
         setMessage(msg);
       }
@@ -155,7 +170,7 @@ export default function CorreoPruebaPage() {
     <div>
       <PageHeader
         title="Correo de prueba"
-        description="Envía un correo real desde tu SMTP configurado — con plantilla o contenido libre"
+        description="Envía un correo real desde un alias de tu dominio verificado — con plantilla o contenido libre"
       />
 
       {!isPremium && (
@@ -194,6 +209,37 @@ export default function CorreoPruebaPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
+            <div className="space-y-2">
+              <Label>Desde</Label>
+              {aliases.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No hay aliases listos.{' '}
+                  <Link href="/dashboard/aliases" className="text-gold underline">
+                    Crea uno
+                  </Link>{' '}
+                  en un dominio verificado.
+                </p>
+              ) : aliases.length === 1 ? (
+                <p className="rounded-2xl border border-border/80 bg-white/80 px-4 py-2.5 text-sm font-medium text-charcoal">
+                  {aliases[0].full_email}
+                  {aliases[0].is_default ? ' ★' : ''}
+                </p>
+              ) : (
+                <select
+                  className="input-crextio w-full"
+                  value={aliasId}
+                  onChange={(e) => setAliasId(e.target.value)}
+                >
+                  {aliases.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.full_email}
+                      {a.is_default ? ' ★ predeterminado' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
             <div className="space-y-2">
               <Label>Destinatario</Label>
               <Input
@@ -290,12 +336,16 @@ export default function CorreoPruebaPage() {
             )}
 
             <div className="flex flex-wrap gap-3">
-              <Button variant="gold" onClick={sendTest} disabled={sending || !to || !canSendNow}>
+              <Button
+                variant="gold"
+                onClick={sendTest}
+                disabled={sending || !to || !aliasId || !canSendNow}
+              >
                 {sending ? 'Enviando…' : 'Enviar correo de prueba'}
               </Button>
               {!canSendNow && <UpgradeButton label="Más envíos con Premium" />}
               <Button variant="secondary" asChild>
-                <Link href="/dashboard/smtp">Configuración SMTP</Link>
+                <Link href="/dashboard/aliases">Gestionar aliases</Link>
               </Button>
             </div>
           </CardContent>

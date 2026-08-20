@@ -3,7 +3,7 @@ import { APP } from '@/lib/brand';
 
 export const metadata: Metadata = {
   title: `Iniciar sesión — ${APP.fullName}`,
-  description: `Accede a tu dashboard de ${APP.fullName}. SMTP, plantillas y envío de correos para desarrolladores.`,
+  description: `Accede a tu dashboard de ${APP.fullName}. Dominios verificados, aliases y envío de correos para desarrolladores.`,
   robots: { index: false, follow: true },
 };
 

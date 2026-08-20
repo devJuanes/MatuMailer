@@ -52,6 +52,9 @@ MATUDB_API_KEY=...
 ENCRYPTION_KEY=una_clave_larga_de_32_caracteres_o_mas
 CORS_ORIGIN=https://mail.matucatalogo.com
 SCHEDULER_INTERVAL_MS=30000
+MATUMAILER_TRANSPORT=postfix
+MATUMAILER_RELAY_HOST=127.0.0.1
+MATUMAILER_RELAY_PORT=25
 ```
 
 Dashboard (obligatorio **antes** del build):
@@ -220,7 +223,7 @@ Renovación automática suele quedar ya configurada.
 | https://api.matucatalogo.com/docs | Swagger |
 | https://mail.matucatalogo.com | Login MatuMailer |
 
-Regístrate, configura SMTP, genera token.
+Regístrate, verifica un dominio por DNS, crea un alias, genera token.
 
 ---
 

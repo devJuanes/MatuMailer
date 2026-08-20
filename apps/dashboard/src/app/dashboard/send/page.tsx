@@ -97,6 +97,7 @@ export default function SendTestPage() {
         .map((s) => s.trim())
         .filter(Boolean);
     if (form.domainId && alias) body.domainId = form.domainId;
+    if (form.aliasId) body.aliasId = form.aliasId;
     return body;
   }, [form, aliases]);
 
@@ -199,7 +200,7 @@ export default function SendTestPage() {
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Alias (from)</label>
+                      <label className="text-sm font-medium">Desde</label>
                       <select
                         className="input-crextio w-full"
                         value={form.aliasId}

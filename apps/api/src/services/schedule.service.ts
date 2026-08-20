@@ -8,6 +8,7 @@ import {
 import { renderTemplate } from '../lib/template-engine.js';
 import { humanizeEmailError } from '../lib/humanize-error.js';
 import { sendEmail } from './email.service.js';
+import { resolveSendingIdentity } from './sending-identity.js';
 import { assertCanSendForProject } from './plan.service.js';
 
 const MIN_LEAD_MS = 60_000;
@@ -72,16 +73,29 @@ export async function enqueueGroupCampaign(options: {
   data?: Record<string, unknown>;
   scheduledAt: string;
   campaignName?: string;
+  from?: string;
+  fromName?: string;
+  domainId?: string;
+  aliasId?: string;
 }) {
   assertFutureSchedule(options.scheduledAt);
   const members = await contactsRepo.listByGroup(options.groupId);
   if (!members.length) throw new Error('GROUP_EMPTY');
+
+  const identity = await resolveSendingIdentity({
+    projectId: options.projectId,
+    from: options.from,
+    fromName: options.fromName,
+    domainId: options.domainId,
+    aliasId: options.aliasId,
+  });
 
   const campaign = await campaignsRepo.create({
     project_id: options.projectId,
     name: options.campaignName ?? `Campaña ${new Date().toLocaleString('es')}`,
     template_slug: options.template ?? null,
     group_id: options.groupId,
+    alias_id: identity.aliasId,
     status: 'pending',
     scheduled_at: new Date(options.scheduledAt).toISOString(),
     total_count: members.length,
@@ -94,6 +108,10 @@ export async function enqueueGroupCampaign(options: {
       template: options.template,
       subject: options.subject,
       html: options.html,
+      from: identity.fromEmail,
+      fromName: options.fromName ?? identity.fromName ?? undefined,
+      domainId: identity.domain.id,
+      aliasId: identity.aliasId,
       data: {
         ...(options.data ?? {}),
         ...(member.metadata as Record<string, unknown>),
@@ -127,14 +145,27 @@ export async function enqueueBulkCampaign(options: {
   html?: string;
   scheduledAt: string;
   campaignName?: string;
+  from?: string;
+  fromName?: string;
+  domainId?: string;
+  aliasId?: string;
 }) {
   assertFutureSchedule(options.scheduledAt);
   if (!options.recipients.length) throw new Error('NO_RECIPIENTS');
+
+  const identity = await resolveSendingIdentity({
+    projectId: options.projectId,
+    from: options.from,
+    fromName: options.fromName,
+    domainId: options.domainId,
+    aliasId: options.aliasId,
+  });
 
   const campaign = await campaignsRepo.create({
     project_id: options.projectId,
     name: options.campaignName ?? `Masivo ${new Date().toLocaleString('es')}`,
     template_slug: options.template ?? null,
+    alias_id: identity.aliasId,
     status: 'pending',
     scheduled_at: new Date(options.scheduledAt).toISOString(),
     total_count: options.recipients.length,
@@ -147,6 +178,10 @@ export async function enqueueBulkCampaign(options: {
       template: options.template,
       subject: options.subject,
       html: options.html,
+      from: identity.fromEmail,
+      fromName: options.fromName ?? identity.fromName ?? undefined,
+      domainId: identity.domain.id,
+      aliasId: identity.aliasId,
       data: {
         ...(r.data ?? {}),
         nombre: r.data?.nombre ?? r.name ?? '',

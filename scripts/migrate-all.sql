@@ -134,6 +134,26 @@ DROP TRIGGER IF EXISTS mailer_domain_aliases_updated_at ON mailer_domain_aliases
 CREATE TRIGGER mailer_domain_aliases_updated_at BEFORE UPDATE ON mailer_domain_aliases
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+ALTER TABLE mailer_projects
+  ADD COLUMN IF NOT EXISTS default_alias_id UUID REFERENCES mailer_domain_aliases(id) ON DELETE SET NULL;
+
+ALTER TABLE api_tokens
+  ADD COLUMN IF NOT EXISTS scopes TEXT[] NOT NULL DEFAULT ARRAY['*']::TEXT[];
+
+ALTER TABLE campaigns
+  ADD COLUMN IF NOT EXISTS alias_id UUID REFERENCES mailer_domain_aliases(id) ON DELETE SET NULL;
+
+ALTER TABLE email_logs
+  ADD COLUMN IF NOT EXISTS from_email VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS domain_id UUID REFERENCES mailer_domains(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS alias_id UUID REFERENCES mailer_domain_aliases(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS provider VARCHAR(40),
+  ADD COLUMN IF NOT EXISTS message_id VARCHAR(255);
+
+ALTER TABLE project_onboarding DROP COLUMN IF EXISTS smtp_completed_at;
+DROP TRIGGER IF EXISTS smtp_configs_updated_at ON smtp_configs;
+DROP TABLE IF EXISTS smtp_configs;
+
 -- ─────────────────────────────────────────────────────────────────────────
 -- 6. Verificación final
 -- ─────────────────────────────────────────────────────────────────────────

@@ -15,8 +15,9 @@ import {
   onboardingRepo,
   projectsRepo,
   scheduledEmailsRepo,
-  smtpConfigsRepo,
   templatesRepo,
+  aliasesRepo,
+  domainsRepo,
 } from '@matumailer/database';
 import { z } from 'zod';
 import { renderTemplate } from '../lib/template-engine.js';
@@ -29,7 +30,80 @@ import {
 import { assertCanSendForProject } from '../services/plan.service.js';
 import { replyPlanLimitError } from '../lib/plan-errors.js';
 import { campaignsRepo, contactsRepo, emailEventsRepo } from '@matumailer/database';
-import { humanizeEmailError } from '../lib/humanize-error.js';
+import { humanizeEmailError, isClientEmailError, parseEmailErrorCode } from '../lib/humanize-error.js';
+
+const groupSendBodySchema = z.object({
+  groupId: z.string().uuid(),
+  template: z.string().optional(),
+  subject: z.string().optional(),
+  html: z.string().optional(),
+  data: z.record(z.unknown()).optional(),
+  scheduledAt: z.string().datetime().optional(),
+  campaignName: z.string().max(150).optional(),
+  from: z.string().email().optional(),
+  fromName: z.string().max(120).optional(),
+  domainId: z.string().uuid().optional(),
+  aliasId: z.string().uuid().optional(),
+});
+
+/**
+ * Resuelve el proyecto de envío y valida ownership.
+ * - API key (`mm_live_`/`mm_test_`): siempre el `projectId` del token.
+ * - JWT de sesión: `body.projectId` (o el único proyecto del usuario) debe
+ *   pertenecer a `request.userId`.
+ */
+async function resolveAuthorizedProjectId(
+  request: { projectId?: string; userId?: string },
+  bodyProjectId?: string,
+): Promise<
+  | { ok: true; projectId: string }
+  | { ok: false; status: number; payload: Record<string, unknown> }
+> {
+  if (request.projectId) {
+    if (bodyProjectId && bodyProjectId !== request.projectId) {
+      return {
+        ok: false,
+        status: 403,
+        payload: {
+          error: 'SENDING_IDENTITY_NOT_ALLOWED',
+          message: 'La API key no puede enviar usando otro proyecto.',
+        },
+      };
+    }
+    return { ok: true, projectId: request.projectId };
+  }
+
+  if (!request.userId) {
+    return {
+      ok: false,
+      status: 401,
+      payload: { error: 'No autorizado', message: 'Token inválido' },
+    };
+  }
+
+  let projectId = bodyProjectId ?? null;
+  if (!projectId) {
+    const projects = await projectsRepo.findProjectsByUserId(request.userId);
+    if (projects.length === 1) projectId = projects[0].id;
+  }
+  if (!projectId) {
+    return {
+      ok: false,
+      status: 400,
+      payload: {
+        error: 'PROJECT_REQUIRED',
+        message:
+          'No se pudo inferir el proyecto. Pasa `projectId` en el body o usa un token `mm_live_...`.',
+      },
+    };
+  }
+
+  const project = await projectsRepo.findProjectById(projectId);
+  if (!project || project.user_id !== request.userId) {
+    return { ok: false, status: 404, payload: { error: 'Not Found' } };
+  }
+  return { ok: true, projectId };
+}
 
 export async function emailsRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -44,23 +118,11 @@ export async function emailsRoutes(app: FastifyInstance) {
       try {
         const body = request.body;
 
-        // Resolución del `projectId`:
-        //  1) `mm_live_...` token → viene en `request.projectId`.
-        //  2) JWT de MatuDB → no tiene projectId; lo sacamos del body o usamos
-        //     el primer proyecto del usuario como fallback.
-        let projectId = request.projectId ?? body.projectId ?? null;
-        if (!projectId && request.userId) {
-          const { projectsRepo } = await import('@matumailer/database');
-          const projects = await projectsRepo.findProjectsByUserId(request.userId);
-          if (projects.length === 1) projectId = projects[0].id;
+        const resolved = await resolveAuthorizedProjectId(request, body.projectId);
+        if (!resolved.ok) {
+          return reply.status(resolved.status).send(resolved.payload);
         }
-        if (!projectId) {
-          return reply.status(400).send({
-            error: 'PROJECT_REQUIRED',
-            message:
-              'No se pudo inferir el proyecto. Pasa `projectId` en el body o usa un token `mm_live_...`.',
-          });
-        }
+        const { projectId } = resolved;
 
         if (body.scheduledAt) {
           await assertCanSendForProject(projectId, { schedule: true });
@@ -92,20 +154,12 @@ export async function emailsRoutes(app: FastifyInstance) {
         return { success: true, scheduled: false, ...result };
       } catch (err) {
         if (replyPlanLimitError(reply, err)) return;
-        const code = err instanceof Error ? err.message : 'SEND_FAILED';
-        const status =
-          code === 'NO_DEFAULT_FROM' ||
-          code === 'NO_VERIFIED_DOMAIN' ||
-          code === 'NO_ALIAS_ON_DOMAIN' ||
-          code === 'FROM_NOT_ALIAS_OF_VERIFIED_DOMAIN' ||
-          code === 'FROM_DOMAIN_NOT_VERIFIED' ||
-          code === 'INVALID_SCHEDULE_TIME' ||
-          code === 'SCHEDULE_TOO_SOON'
-            ? 400
-            : 500;
-        return reply.status(status).send({
+        const message = err instanceof Error ? err.message : 'SEND_FAILED';
+        const code = parseEmailErrorCode(message);
+        return reply.status(isClientEmailError(message) ? 400 : 500).send({
           error: code,
-          message: err instanceof Error ? err.message : 'Failed to send email',
+          message,
+          userMessage: humanizeEmailError(message),
         });
       }
     },
@@ -172,7 +226,47 @@ export async function emailsRoutes(app: FastifyInstance) {
       }
 
       const body = request.body;
-      const smtp = await smtpConfigsRepo.findSmtpByProjectId(project.id);
+      let fromEmail = body.from ?? '';
+      let fromName: string | null = body.fromName ?? null;
+      let domainVerified = false;
+      let domainName = '';
+
+      if (body.aliasId) {
+        const found = await aliasesRepo.findAliasById(body.aliasId);
+        if (found && found.projectId === project.id) {
+          fromEmail = found.alias.full_email;
+          fromName = found.alias.display_name;
+          const domain = await domainsRepo.findDomainById(found.alias.domain_id);
+          domainVerified = domain?.status === 'verified';
+          domainName = domain?.domain ?? '';
+        }
+      } else if (fromEmail) {
+        const alias = await aliasesRepo.findAliasByEmail(project.id, fromEmail);
+        if (alias) {
+          fromName = fromName ?? alias.display_name;
+          const domain = await domainsRepo.findDomainById(alias.domain_id);
+          domainVerified = domain?.status === 'verified';
+          domainName = domain?.domain ?? '';
+        }
+      } else {
+        const sendable = await aliasesRepo.listSendableAliases(
+          project.id,
+          body.domainId,
+        );
+        if (sendable.length === 1) {
+          fromEmail = sendable[0].full_email;
+          fromName = sendable[0].display_name;
+          domainVerified = true;
+          domainName = sendable[0].domain;
+        } else if (sendable.length > 1) {
+          const def = sendable.find((a) => a.is_default) ?? sendable[0];
+          fromEmail = def.full_email;
+          fromName = def.display_name;
+          domainVerified = true;
+          domainName = def.domain;
+        }
+      }
+
       let subject = body.subject ?? '';
       let html = body.html ?? '';
 
@@ -186,7 +280,13 @@ export async function emailsRoutes(app: FastifyInstance) {
         subject = body.subject ?? rendered.subject;
       }
 
-      const report = buildDeliverabilityReport(smtp, subject, html || '<p></p>');
+      const report = buildDeliverabilityReport(
+        fromEmail
+          ? { fromEmail, fromName, domainVerified, domainName }
+          : null,
+        subject,
+        html || '<p></p>',
+      );
       return { report };
     },
   );
@@ -316,6 +416,10 @@ export async function emailsRoutes(app: FastifyInstance) {
             subject: request.body.subject,
             scheduledAt: request.body.scheduledAt,
             campaignName: request.body.campaignName,
+            from: request.body.from,
+            fromName: request.body.fromName,
+            domainId: request.body.domainId,
+            aliasId: request.body.aliasId,
           });
           return reply.status(201).send({
             success: true,
@@ -337,12 +441,7 @@ export async function emailsRoutes(app: FastifyInstance) {
         if (replyPlanLimitError(reply, err)) return;
         const code = err instanceof Error ? err.message : 'BULK_SEND_FAILED';
         const status =
-          code === 'SMTP_NOT_CONFIGURED' ||
-          code === 'SMTP_NOT_VERIFIED' ||
-          code === 'SMTP_FROM_DOMAIN_MISMATCH' ||
-          code === 'TEMPLATE_NOT_FOUND' ||
-          code === 'SCHEDULE_TOO_SOON' ||
-          code === 'INVALID_SCHEDULE_TIME'
+          isClientEmailError(code) || parseEmailErrorCode(code) === 'TEMPLATE_NOT_FOUND'
             ? 400
             : 500;
         return reply.status(status).send({
@@ -380,6 +479,10 @@ export async function emailsRoutes(app: FastifyInstance) {
             subject: request.body.subject,
             scheduledAt: request.body.scheduledAt,
             campaignName: request.body.campaignName,
+            from: request.body.from,
+            fromName: request.body.fromName,
+            domainId: request.body.domainId,
+            aliasId: request.body.aliasId,
           });
           return reply.status(201).send({
             success: true,
@@ -401,12 +504,7 @@ export async function emailsRoutes(app: FastifyInstance) {
         if (replyPlanLimitError(reply, err)) return;
         const code = err instanceof Error ? err.message : 'BULK_SEND_FAILED';
         const status =
-          code === 'SMTP_NOT_CONFIGURED' ||
-          code === 'SMTP_NOT_VERIFIED' ||
-          code === 'SMTP_FROM_DOMAIN_MISMATCH' ||
-          code === 'TEMPLATE_NOT_FOUND' ||
-          code === 'SCHEDULE_TOO_SOON' ||
-          code === 'INVALID_SCHEDULE_TIME'
+          isClientEmailError(code) || parseEmailErrorCode(code) === 'TEMPLATE_NOT_FOUND'
             ? 400
             : 500;
         return reply.status(status).send({
@@ -468,10 +566,8 @@ export async function emailsRoutes(app: FastifyInstance) {
         const code = err instanceof Error ? err.message : 'BULK_SEND_FAILED';
         const status =
           code === 'EMAIL_FIELD_NOT_FOUND' ||
-          code === 'SMTP_NOT_CONFIGURED' ||
-          code === 'SMTP_NOT_VERIFIED' ||
-          code === 'SMTP_FROM_DOMAIN_MISMATCH' ||
-          code === 'TEMPLATE_NOT_FOUND'
+          isClientEmailError(code) ||
+          parseEmailErrorCode(code) === 'TEMPLATE_NOT_FOUND'
             ? 400
             : 500;
         return reply.status(status).send({
@@ -492,15 +588,7 @@ export async function emailsRoutes(app: FastifyInstance) {
     {
       preHandler: [app.authenticateApiToken],
       schema: {
-        body: z.object({
-          groupId: z.string().uuid(),
-          template: z.string().optional(),
-          subject: z.string().optional(),
-          html: z.string().optional(),
-          data: z.record(z.unknown()).optional(),
-          scheduledAt: z.string().datetime().optional(),
-          campaignName: z.string().max(150).optional(),
-        }),
+        body: groupSendBodySchema,
         tags: ['Emails'],
       },
     },
@@ -520,6 +608,10 @@ export async function emailsRoutes(app: FastifyInstance) {
             data: request.body.data,
             scheduledAt: request.body.scheduledAt,
             campaignName: request.body.campaignName,
+            from: request.body.from,
+            fromName: request.body.fromName,
+            domainId: request.body.domainId,
+            aliasId: request.body.aliasId,
           });
           return reply.status(201).send({
             success: true,
@@ -541,6 +633,10 @@ export async function emailsRoutes(app: FastifyInstance) {
           html: request.body.html,
           data: request.body.data,
           campaignName: request.body.campaignName,
+          from: request.body.from,
+          fromName: request.body.fromName,
+          domainId: request.body.domainId,
+          aliasId: request.body.aliasId,
         });
         return { success: true, scheduled: false, ...result };
       } catch (err) {
@@ -560,15 +656,7 @@ export async function emailsRoutes(app: FastifyInstance) {
       preHandler: [app.authenticate],
       schema: {
         params: z.object({ projectId: z.string().uuid() }),
-        body: z.object({
-          groupId: z.string().uuid(),
-          template: z.string().optional(),
-          subject: z.string().optional(),
-          html: z.string().optional(),
-          data: z.record(z.unknown()).optional(),
-          scheduledAt: z.string().datetime().optional(),
-          campaignName: z.string().max(150).optional(),
-        }),
+        body: groupSendBodySchema,
         tags: ['Emails'],
       },
     },
@@ -605,6 +693,10 @@ export async function emailsRoutes(app: FastifyInstance) {
           html: request.body.html,
           data: request.body.data,
           campaignName: request.body.campaignName,
+          from: request.body.from,
+          fromName: request.body.fromName,
+          domainId: request.body.domainId,
+          aliasId: request.body.aliasId,
         });
         return { success: true, ...result };
       } catch (err) {
@@ -684,6 +776,10 @@ export async function emailsRoutes(app: FastifyInstance) {
           html: body.html,
           text: body.text,
           data: body.data,
+          from: body.from,
+          fromName: body.fromName,
+          domainId: body.domainId,
+          aliasId: body.aliasId,
           logMetadata: { isTest: true },
         });
         await onboardingRepo.markTestEmailSent(project.id);
@@ -691,15 +787,9 @@ export async function emailsRoutes(app: FastifyInstance) {
       } catch (err) {
         if (replyPlanLimitError(reply, err)) return;
         const message = err instanceof Error ? err.message : 'Failed to send test email';
-        const status =
-          message === 'SMTP_NOT_CONFIGURED' ||
-          message === 'SMTP_NOT_VERIFIED' ||
-          message === 'SMTP_FROM_DOMAIN_MISMATCH' ||
-          message === 'TEMPLATE_NOT_FOUND'
-            ? 400
-            : 500;
-        return reply.status(status).send({
-          error: 'SEND_FAILED',
+        const code = parseEmailErrorCode(message);
+        return reply.status(isClientEmailError(message) ? 400 : 500).send({
+          error: code,
           message,
           userMessage: humanizeEmailError(message),
         });

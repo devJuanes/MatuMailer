@@ -1,6 +1,6 @@
 import type { Project } from '@matumailer/shared';
 import { getMatuDb } from '../client';
-import { insertOne } from '../helpers';
+import { insertOne, updateMany } from '../helpers';
 
 export async function findProjectsByUserId(userId: string): Promise<Project[]> {
   const db = getMatuDb();
@@ -44,4 +44,13 @@ export async function createProject(input: {
 export async function deleteProject(id: string): Promise<void> {
   const db = getMatuDb();
   await db.from('mailer_projects').eq('id', id).delete();
+}
+
+export async function setDefaultAlias(
+  projectId: string,
+  aliasId: string | null,
+): Promise<void> {
+  await updateMany('mailer_projects', [{ column: 'id', value: projectId }], {
+    default_alias_id: aliasId,
+  } as Record<string, unknown>);
 }

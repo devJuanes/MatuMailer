@@ -13,10 +13,10 @@ Documentación para integrar MatuMailer en tu código (Node.js, Next.js, scripts
 | Requisito                         | Dónde se configura                      | Por qué                                                              |
 | --------------------------------- | --------------------------------------- | -------------------------------------------------------------------- |
 | Cuenta MatuMailer                 | Dashboard → registro                    | Identidad y proyectos                                                |
-| Un **proyecto**                   | Dashboard → Proyectos                   | Agrupa SMTP, plantillas, tokens y dominios                           |
-| **SMTP** verificado               | Dashboard → SMTP del proyecto           | Sin esto la API responde `SMTP_NOT_CONFIGURED` o `SMTP_NOT_VERIFIED` |
+| Un **proyecto**                   | Dashboard → Proyectos                   | Aísla dominios, aliases, tokens y envíos                             |
+| **Dominio verificado por DNS**    | Dashboard → Dominios                    | Identidad de envío (SPF/DKIM/DMARC)                                  |
+| **Alias** (identidad de envío)    | Dashboard → Aliases                     | `from` autorizado, p. ej. `soporte@tudominio.com`                    |
 | **Token de API**                  | Dashboard → proyecto → Tokens API       | Autenticación en `Authorization: Bearer mm_live_...`                 |
-| (Opcional) **Dominio verificado** | Dashboard → Dominios                    | Permite `from: 'support@tudominio.com'` con DKIM automático          |
 | (Opcional) **Plantillas**         | Dashboard → Plantillas o Creador visual | Solo si envías con `template: 'slug'`                                |
 
 El token **no** es tu contraseña de login: es un secreto de proyecto que empieza por `mm_live_`.
@@ -386,8 +386,9 @@ Más ejemplos en el dashboard → **Documentación**.
 
 | Código / mensaje      | Causa                               | Qué hacer                       |
 | --------------------- | ----------------------------------- | ------------------------------- |
-| `SMTP_NOT_CONFIGURED` | No hay SMTP en el proyecto          | Configura SMTP en el dashboard  |
-| `SMTP_NOT_VERIFIED`   | SMTP sin verificar                  | Usa “Verificar” en el dashboard |
+| `NO_VERIFIED_DOMAIN` / `DOMAIN_NOT_VERIFIED` | Dominio sin DNS listo            | Verifica SPF/DKIM en Dominios   |
+| `NO_DEFAULT_SENDING_IDENTITY` | Varios aliases y ninguno default | Indica `from` o marca predeterminado |
+| `SENDING_IDENTITY_NOT_ALLOWED` | Alias de otro proyecto           | Usa un alias de **este** proyecto |
 | `TEMPLATE_NOT_FOUND`  | Slug incorrecto o de otro proyecto  | Revisa el slug en Plantillas    |
 | `401`                 | Token inválido o revocado           | Genera un token nuevo           |
 | `MISSING_TOKEN` (SDK) | Falta token en constructor o `.env` | Define `MATUMAILER_TOKEN`       |
@@ -396,7 +397,7 @@ Más ejemplos en el dashboard → **Documentación**.
 
 ## 10. Checklist rápido
 
-1. [ ] SMTP del proyecto configurado y **verificado**
+1. [ ] Dominio verificado por DNS y al menos un **alias** activo
 2. [ ] Token API copiado (`mm_live_...`)
 3. [ ] `npm install matumailer`
 4. [ ] `.env` con `MATUMAILER_TOKEN`

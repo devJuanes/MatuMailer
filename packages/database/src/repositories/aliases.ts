@@ -1,4 +1,4 @@
-import type { DomainAlias, DomainAliasWithDomain } from '@matumailer/shared';
+import type { Domain, DomainAlias, DomainAliasWithDomain } from '@matumailer/shared';
 import { getMatuDb } from '../client';
 import { insertOne, updateOne } from '../helpers';
 import { findDomainById, getProjectDefaultDomain, listDomainsByProject } from './domains';
@@ -89,6 +89,24 @@ export async function findAliasById(
   return { alias, projectId: domain.project_id, domain: domain.domain };
 }
 
+/** Alias por email completo, sin filtrar proyecto ni verificación (el caller valida). */
+export async function findAliasRowByEmail(
+  fullEmail: string,
+): Promise<{ alias: DomainAlias; domain: Domain } | null> {
+  const db = getMatuDb();
+  const normalized = fullEmail.toLowerCase().trim();
+  const { data, error } = await db
+    .from('mailer_domain_aliases')
+    .select(SELECT_ALIAS)
+    .eq('full_email', normalized)
+    .maybeSingle();
+  if (error || !data) return null;
+  const alias = data as DomainAlias;
+  const domain = await findDomainById(alias.domain_id);
+  if (!domain) return null;
+  return { alias, domain };
+}
+
 /**
  * Busca un alias por su `full_email` dentro del proyecto. Valida que el
  * alias esté activo y el dominio verificado (requisito del envío).
@@ -97,24 +115,12 @@ export async function findAliasByEmail(
   projectId: string,
   fullEmail: string,
 ): Promise<DomainAliasWithDomain | null> {
-  const db = getMatuDb();
-  const normalized = fullEmail.toLowerCase().trim();
-  // 1) Traer el alias
-  const { data, error } = await db
-    .from('mailer_domain_aliases')
-    .select(SELECT_ALIAS)
-    .eq('full_email', normalized)
-    .eq('is_active', true)
-    .maybeSingle();
-  if (error || !data) return null;
-  const alias = data as DomainAlias;
-
-  // 2) Validar que el dominio pertenece al proyecto y está verificado
-  const domain = await findDomainById(alias.domain_id);
-  if (!domain || domain.project_id !== projectId) return null;
-  if (domain.status !== 'verified') return null;
-
-  return { ...alias, domain: domain.domain };
+  const found = await findAliasRowByEmail(fullEmail);
+  if (!found) return null;
+  if (found.domain.project_id !== projectId) return null;
+  if (!found.alias.is_active) return null;
+  if (found.domain.status !== 'verified') return null;
+  return { ...found.alias, domain: found.domain.domain };
 }
 
 /**
@@ -164,13 +170,19 @@ export async function findFirstActiveAlias(
 export async function findAnyActiveAliasForProject(
   projectId: string,
 ): Promise<DomainAliasWithDomain | null> {
+  const aliases = await listSendableAliases(projectId);
+  return aliases[0] ?? null;
+}
+
+/** Aliases activos cuyo dominio padre está verificado (listos para enviar). */
+export async function listSendableAliases(
+  projectId: string,
+  domainId?: string,
+): Promise<DomainAliasWithDomain[]> {
+  const aliases = await listAliases(projectId, { domainId, activeOnly: true });
   const domains = await listDomainsByProject(projectId);
-  for (const d of domains) {
-    if (d.status !== 'verified') continue;
-    const alias = await findFirstActiveAlias(d.id);
-    if (alias) return alias;
-  }
-  return null;
+  const verified = new Set(domains.filter((d) => d.status === 'verified').map((d) => d.id));
+  return aliases.filter((a) => verified.has(a.domain_id));
 }
 
 export async function createAlias(input: {
@@ -223,6 +235,19 @@ export async function unsetDefaultInDomain(domainId: string): Promise<void> {
   const { error } = await db
     .from('mailer_domain_aliases')
     .eq('domain_id', domainId)
+    .update({ is_default: false });
+  if (error) throw new Error(error.message);
+}
+
+/** Quita el default de todos los aliases del proyecto (un remitente predeterminado por proyecto). */
+export async function unsetDefaultInProject(projectId: string): Promise<void> {
+  const domains = await listDomainsByProject(projectId);
+  const ids = domains.map((d) => d.id);
+  if (!ids.length) return;
+  const db = getMatuDb();
+  const { error } = await db
+    .from('mailer_domain_aliases')
+    .in('domain_id', ids)
     .update({ is_default: false });
   if (error) throw new Error(error.message);
 }

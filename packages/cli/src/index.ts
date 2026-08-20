@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
-import { MatuMailer, detectSmtp } from 'matumailer';
+import { MatuMailer } from 'matumailer';
 
 function loadToken(): string {
   const token = process.env.MATUMAILER_TOKEN;
@@ -45,12 +45,6 @@ program
     const envContent = `# MatuMailer Configuration
 MATUMAILER_TOKEN=mm_live_your_token_here
 MATUMAILER_API_URL=http://localhost:4000
-
-# Optional SMTP (for local testing)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your@gmail.com
-SMTP_PASS=your_app_password
 `;
 
     const envPath = join(dir, '.env.matumailer');
@@ -121,24 +115,7 @@ await mail.send({
     console.log(chalk.cyan('\n  Next steps:'));
     console.log('  1. Copy your API token from the MatuMailer dashboard');
     console.log('  2. Set MATUMAILER_TOKEN in .env.matumailer');
-    console.log('  3. Run: npx matumailer verify-smtp --email your@gmail.com\n');
-  });
-
-program
-  .command('verify-smtp')
-  .description('Detect SMTP settings from an email address')
-  .requiredOption('-e, --email <email>', 'Email address to detect provider')
-  .action((opts: { email: string }) => {
-    const preset = detectSmtp(opts.email);
-    if (!preset) {
-      console.log(chalk.yellow('  No known provider detected. Use custom SMTP settings.'));
-      return;
-    }
-    console.log(chalk.green('\n  SMTP Auto-Detection\n'));
-    console.log(`  Provider: ${chalk.bold(preset.provider)}`);
-    console.log(`  Host:     ${preset.host}`);
-    console.log(`  Port:     ${preset.port}`);
-    console.log(`  Secure:   ${preset.secure}\n`);
+    console.log('  3. Verify your domain and create an alias in the dashboard\n');
   });
 
 const domains = program.command('domains').description('Gestiona dominios de envío');

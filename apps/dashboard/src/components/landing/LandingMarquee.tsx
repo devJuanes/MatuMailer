@@ -1,5 +1,5 @@
 const ITEMS = [
-  'SMTP Gmail · Outlook · Zoho',
+  'Dominios verificados · aliases',
   'Plantillas con {{variables}}',
   'SDK npm matumailer',
   'Envío masivo Premium',

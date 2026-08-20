@@ -16,7 +16,7 @@ export const SEO_KEYWORDS = [
   'envío de correos',
   'email transaccional',
   'API de correo',
-  'SMTP desarrolladores',
+  'dominio verificado',
   'infraestructura email',
   'plantillas de correo',
   'SDK email Node.js',
@@ -28,7 +28,7 @@ export const SEO_KEYWORDS = [
 
 export const LANDING_SEO = {
   title: `MatuMailer — Plataforma de correo transaccional para desarrolladores | ${MATUBYTE.name}`,
-  description: `${APP.description}. Envía correos con SMTP automático, plantillas dinámicas, SDK npm y API REST. Plan gratis para empezar. Desarrollado por ${MATUBYTE.name} para equipos en Colombia y Latinoamérica.`,
+  description: `${APP.description}. Envía correos con dominios verificados, aliases, plantillas dinámicas, SDK npm y API REST. Plan gratis para empezar. Desarrollado por ${MATUBYTE.name} para equipos en Colombia y Latinoamérica.`,
   keywords: SEO_KEYWORDS,
 } as const;
 
@@ -117,13 +117,13 @@ export function buildLandingJsonLd() {
         '@type': 'Offer',
         price: '0',
         priceCurrency: 'COP',
-        description: 'Plan gratuito con SMTP, plantillas y correos de prueba',
+        description: 'Plan gratuito con dominio verificado, plantillas y correos de prueba',
       },
       description: LANDING_SEO.description,
       url: siteUrl,
       inLanguage: 'es-CO',
       featureList: [
-        'SMTP automático con detección de proveedor',
+        'Dominios verificados por DNS y aliases de envío',
         'Plantillas HTML dinámicas',
         'SDK npm y API REST',
         'Autenticación MatuDB',
@@ -162,7 +162,7 @@ const FAQ_FOR_JSON_LD = [
     name: '¿Qué es MatuMailer?',
     acceptedAnswer: {
       '@type': 'Answer',
-      text: 'MatuMailer es una plataforma de infraestructura de correo para desarrolladores. Permite enviar correos transaccionales con SMTP, plantillas y un SDK npm, sin montar servidores propios.',
+      text: 'MatuMailer es una plataforma de infraestructura de correo para desarrolladores. Permite enviar correos transaccionales con dominios verificados, aliases, plantillas y un SDK npm, sin montar servidores propios ni compartir credenciales SMTP.',
     },
   },
   {
@@ -170,15 +170,15 @@ const FAQ_FOR_JSON_LD = [
     name: '¿MatuMailer tiene plan gratuito?',
     acceptedAnswer: {
       '@type': 'Answer',
-      text: 'Sí. El plan gratuito incluye 1 proyecto, configuración SMTP, plantillas personalizadas y correos de prueba para integrar tu producto sin costo inicial.',
+      text: 'Sí. El plan gratuito incluye 1 proyecto, dominio verificado, aliases, plantillas personalizadas y correos de prueba para integrar tu producto sin costo inicial.',
     },
   },
   {
     '@type': 'Question',
-    name: '¿Qué proveedores SMTP soporta?',
+    name: '¿Cómo envío correos sin SMTP?',
     acceptedAnswer: {
       '@type': 'Answer',
-      text: 'Detecta automáticamente Gmail, Outlook, Zoho y otros proveedores SMTP habituales. Solo configuras tus credenciales y MatuMailer se encarga del resto.',
+      text: 'Verificas tu dominio por DNS (SPF/DKIM), creas aliases como ventas@tudominio.com y envías desde la API o el SDK. MatuMailer entrega por su relay de plataforma; no pides host, usuario ni contraseña SMTP al usuario.',
     },
   },
   {

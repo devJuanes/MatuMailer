@@ -1,5 +1,3 @@
-import type { SmtpConfig } from './types';
-
 export interface DeliverabilityCheck {
   id: string;
   ok: boolean;
@@ -11,6 +9,13 @@ export interface DeliverabilityReport {
   score: number;
   checks: DeliverabilityCheck[];
   tips: string[];
+}
+
+export interface DeliverabilitySender {
+  fromEmail: string;
+  fromName: string | null;
+  domainVerified: boolean;
+  domainName: string;
 }
 
 /** Convierte HTML a texto plano (multipart mejora mucho la entrega). */
@@ -46,13 +51,6 @@ export function sanitizeSubject(subject: string): string {
 function domainOf(email: string): string | null {
   const d = email.split('@')[1]?.toLowerCase().trim();
   return d || null;
-}
-
-/** Remitente y usuario SMTP deben compartir dominio (alineación SPF). */
-export function isFromDomainAligned(config: Pick<SmtpConfig, 'from_email' | 'username'>): boolean {
-  const from = domainOf(config.from_email);
-  const user = domainOf(config.username);
-  return !!from && !!user && from === user;
 }
 
 /** Inyecta preheader oculto y asegura estructura mínima válida. */
@@ -118,54 +116,55 @@ export function analyzeContentRisks(subject: string, html: string): string[] {
 }
 
 export function buildDeliverabilityReport(
-  config: Pick<SmtpConfig, 'from_email' | 'username' | 'from_name' | 'is_verified'> | null,
+  sender: DeliverabilitySender | null,
   subject?: string,
   html?: string,
 ): DeliverabilityReport {
   const checks: DeliverabilityCheck[] = [];
   const tips: string[] = [
-    'Usa el mismo dominio en «Correo remitente» y «Usuario SMTP» (Gmail → @gmail.com en ambos).',
-    'Configura SPF/DKIM en tu dominio si usas correo corporativo (Zoho, dominio propio).',
+    'Verifica el dominio por DNS (SPF, DKIM, DMARC) antes de enviar.',
+    'Envía siempre desde un alias del dominio verificado (hola@tudominio.com).',
     'Evita adjuntos pesados en el primer envío; prioriza HTML + texto plano.',
     'Pide a los destinatarios que marquen «No es spam» la primera vez.',
   ];
 
-  if (!config) {
+  if (!sender) {
     checks.push({
-      id: 'smtp',
+      id: 'sender',
       ok: false,
-      label: 'SMTP configurado',
-      detail: 'Guarda la configuración SMTP del proyecto.',
+      label: 'Alias de envío',
+      detail: 'Verifica un dominio y crea un alias (ej. hola@tudominio.com).',
     });
     return { score: 0, checks, tips };
   }
 
-  const aligned = isFromDomainAligned(config);
   checks.push({
-    id: 'spf-align',
-    ok: aligned,
-    label: 'Remitente alineado con SMTP',
-    detail: aligned
-      ? 'El dominio del remitente coincide con el usuario SMTP (bueno para SPF).'
-      : 'El correo remitente debe ser del mismo dominio que el usuario SMTP.',
+    id: 'domain',
+    ok: sender.domainVerified,
+    label: 'Dominio verificado',
+    detail: sender.domainVerified
+      ? `${sender.domainName || domainOf(sender.fromEmail)} está verificado por DNS.`
+      : 'El dominio del remitente aún no está verificado.',
   });
 
+  const fromDomain = domainOf(sender.fromEmail);
+  const aligned = !!fromDomain && (!sender.domainName || fromDomain === sender.domainName);
   checks.push({
-    id: 'verified',
-    ok: config.is_verified,
-    label: 'Conexión SMTP verificada',
-    detail: config.is_verified
-      ? 'La conexión fue probada correctamente.'
-      : 'Pulsa «Probar conexión» antes de enviar masivamente.',
+    id: 'from-align',
+    ok: aligned,
+    label: 'Remitente del dominio',
+    detail: aligned
+      ? `Se enviará desde ${sender.fromEmail}.`
+      : 'El alias debe pertenecer al dominio verificado.',
   });
 
   checks.push({
     id: 'from-name',
-    ok: !!config.from_name?.trim(),
+    ok: !!sender.fromName?.trim(),
     label: 'Nombre del remitente',
-    detail: config.from_name?.trim()
-      ? `Los destinatarios verán: ${config.from_name}`
-      : 'Añade un nombre (ej. tu marca) en lugar de solo el correo.',
+    detail: sender.fromName?.trim()
+      ? `Los destinatarios verán: ${sender.fromName}`
+      : 'Añade un nombre de alias (ej. tu marca) en lugar de solo el correo.',
   });
 
   if (subject !== undefined) {
@@ -193,14 +192,6 @@ export function buildDeliverabilityReport(
           : 'Añade más texto visible en la plantilla.',
     });
     tips.push(...analyzeContentRisks(subject ?? '', html));
-  }
-
-  const providerDomain = domainOf(config.from_email);
-  if (providerDomain === 'gmail.com' || providerDomain === 'googlemail.com') {
-    tips.push('En Gmail: usa contraseña de aplicación y el mismo @gmail.com como remitente.');
-  }
-  if (providerDomain?.includes('zoho')) {
-    tips.push('En Zoho: verifica SPF/DKIM en el panel de dominio (Zoho Mail → Configuración de correo).');
   }
 
   const score = Math.round((checks.filter((c) => c.ok).length / checks.length) * 100);

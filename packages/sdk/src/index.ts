@@ -1,6 +1,6 @@
 export { MatuMailer } from './client.js';
 export { MatuMailerError } from './errors.js';
-export { detectSmtp, loadEnvToken } from './smtp-detect.js';
+export { loadEnvToken } from './env-token.js';
 export type {
   Alias,
   BulkRecipient,
@@ -17,6 +17,6 @@ export type {
   GroupSendResult,
   MatuMailerConfig,
   SendEmailPayload,
-  SmtpPreset,
+  SendingIdentity,
   UpdateAliasPayload,
 } from './types.js';
