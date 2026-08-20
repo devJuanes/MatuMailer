@@ -16,6 +16,7 @@ export const CLIENT_EMAIL_ERROR_CODES = new Set([
   'FROM_NOT_ALIAS_OF_VERIFIED_DOMAIN',
   'FROM_DOMAIN_NOT_VERIFIED',
   'NO_DEFAULT_FROM',
+  'DKIM_KEY_DECRYPT_FAILED',
   'TEMPLATE_NOT_FOUND',
   'INVALID_SCHEDULE_TIME',
   'SCHEDULE_TOO_SOON',
@@ -66,6 +67,9 @@ export function humanizeEmailError(raw: string): string {
   }
   if (code === 'DOMAIN_NOT_FOUND' || code === 'DOMAIN_NOT_ALLOWED_FOR_PROJECT') {
     return 'El dominio indicado no pertenece a este proyecto.';
+  }
+  if (code === 'DKIM_KEY_DECRYPT_FAILED') {
+    return 'La clave DKIM del dominio no se puede leer. Contacta soporte o vuelve a registrar el dominio con la ENCRYPTION_KEY correcta.';
   }
 
   if (

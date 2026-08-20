@@ -33,12 +33,24 @@ export function encrypt(text: string): string {
 }
 
 export function decrypt(encryptedText: string): string {
-  const key = getEncryptionKey();
-  const data = Buffer.from(encryptedText, 'base64');
-  const iv = data.subarray(0, IV_LENGTH);
-  const tag = data.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
-  const encrypted = data.subarray(IV_LENGTH + TAG_LENGTH);
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+  try {
+    const key = getEncryptionKey();
+    const data = Buffer.from(encryptedText, 'base64');
+    if (data.length <= IV_LENGTH + TAG_LENGTH) {
+      throw new Error('DKIM_KEY_DECRYPT_FAILED — ciphertext inválido o truncado.');
+    }
+    const iv = data.subarray(0, IV_LENGTH);
+    const tag = data.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
+    const encrypted = data.subarray(IV_LENGTH + TAG_LENGTH);
+    const decipher = createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.startsWith('DKIM_KEY_DECRYPT_FAILED'))
+      throw err instanceof Error ? err : new Error(msg);
+    throw new Error(
+      'DKIM_KEY_DECRYPT_FAILED — No se pudo descifrar la clave DKIM. Revisa que ENCRYPTION_KEY sea la misma con la que se creó el dominio.',
+    );
+  }
 }
