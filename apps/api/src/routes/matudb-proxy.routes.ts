@@ -59,7 +59,9 @@ export async function matudbProxyRoutes(app: FastifyInstance) {
       }
     }
 
-    if (serviceKey) headers.set('apikey', serviceKey);
+    if (!headers.has('apikey') && serviceKey) {
+      headers.set('apikey', serviceKey);
+    }
     // Refuerzo de host de MatuDB por si el cliente lo envía
     headers.set('host', new URL(matudbBase).host);
     headers.set('x-forwarded-host', new URL(matudbBase).host);
