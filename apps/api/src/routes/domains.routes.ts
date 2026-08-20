@@ -139,7 +139,7 @@ export async function domainsRoutes(app: FastifyInstance) {
         },
         ...buildMxRecords({ region: request.body.region }).map((m) => ({
           type: 'MX' as const,
-          host: m.host === 'mx' ? `mx.${request.body.domain}` : m.host,
+          host: m.host === '@' ? request.body.domain : m.host,
           value: m.value,
           priority: m.priority,
         })),

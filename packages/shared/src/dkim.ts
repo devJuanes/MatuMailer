@@ -92,16 +92,17 @@ export function returnPathTarget(region: string): string {
   return `feedback.${region}.matumailer.com`;
 }
 
-/** MX para recepción de replies/feedback (opcional pero recomendado). */
+/** MX de recepción: apunta al servidor MatuMailer (Postfix inbound). */
 export function buildMxRecords(opts: { region: string; priority?: number }): Array<{
   host: string;
   value: string;
   priority: number;
 }> {
+  void opts.region;
   return [
     {
-      host: 'mx',
-      value: `mx.${opts.region}.matumailer.com`,
+      host: '@',
+      value: 'matumailer.matubyte.com',
       priority: opts.priority ?? 10,
     },
   ];
