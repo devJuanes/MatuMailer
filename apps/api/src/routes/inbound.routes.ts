@@ -82,6 +82,18 @@ export async function inboundRoutes(app: FastifyInstance) {
           message: `No hay alias ${toEmail} en MatuMailer.`,
         });
       }
+      if (!aliasRow.alias.is_active) {
+        return reply.status(404).send({
+          error: 'ALIAS_INACTIVE',
+          message: `El alias ${toEmail} está desactivado.`,
+        });
+      }
+      if (aliasRow.domain.status !== 'verified') {
+        return reply.status(404).send({
+          error: 'DOMAIN_NOT_VERIFIED',
+          message: `El dominio de ${toEmail} no está verificado.`,
+        });
+      }
 
       const projectId = aliasRow.domain.project_id;
       if (request.projectId && request.projectId !== projectId) {

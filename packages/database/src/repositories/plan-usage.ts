@@ -78,6 +78,36 @@ export async function countSentEmailsInWindow(userId: string, hours: number): Pr
   return total;
 }
 
+export async function countAliasesByUserId(userId: string): Promise<number> {
+  const projects = await projectsRepo.findProjectsByUserId(userId);
+  if (projects.length === 0) return 0;
+  const db = getMatuDb();
+  let total = 0;
+  for (const project of projects) {
+    const domains = await listDomainsByProject(project.id);
+    const ids = domains.map((d) => d.id);
+    if (ids.length === 0) continue;
+    const { data, error } = await db
+      .from('mailer_domain_aliases')
+      .select('id')
+      .in('domain_id', ids);
+    if (error) throw new Error(error.message);
+    total += (data ?? []).length;
+  }
+  return total;
+}
+
+export async function countDomainsByUserId(userId: string): Promise<number> {
+  const projects = await projectsRepo.findProjectsByUserId(userId);
+  if (projects.length === 0) return 0;
+  let total = 0;
+  for (const project of projects) {
+    const domains = await listDomainsByProject(project.id);
+    total += domains.length;
+  }
+  return total;
+}
+
 export function getFreeLimitsSummary() {
   return { ...FREE_PLAN_LIMITS };
 }

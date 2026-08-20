@@ -16,6 +16,12 @@ import { domainsRepo, projectsRepo } from '@matumailer/database';
 import { z } from 'zod';
 import { encrypt } from '../lib/crypto.js';
 import { checkDomainDns } from '../lib/domain-dns.js';
+import {
+  assertCanCreateDomain,
+  isPlanLimitError,
+  planLimitReply,
+} from '../services/plan.service.js';
+import { schedulePostfixInboundSync } from '../services/postfix-inbound-sync.js';
 
 const RETURN_PATH_PREFIX = 'rp';
 
@@ -48,7 +54,11 @@ export async function domainsRoutes(app: FastifyInstance) {
       if (!projectId) {
         return reply.status(400).send({ error: 'PROJECT_REQUIRED' });
       }
-      if (request.projectId && request.query.projectId && request.projectId !== request.query.projectId) {
+      if (
+        request.projectId &&
+        request.query.projectId &&
+        request.projectId !== request.query.projectId
+      ) {
         return reply.status(403).send({ error: 'DOMAIN_NOT_ALLOWED_FOR_PROJECT' });
       }
       const project = await projectsRepo.findProjectById(projectId);
@@ -75,6 +85,15 @@ export async function domainsRoutes(app: FastifyInstance) {
       const project = await projectsRepo.findProjectById(request.query.projectId);
       if (!ensureProjectAccess(project, request.userId!)) {
         return reply.status(404).send({ error: 'Not Found' });
+      }
+
+      try {
+        await assertCanCreateDomain(request.userId!);
+      } catch (err) {
+        if (isPlanLimitError(err)) {
+          return reply.status(402).send(planLimitReply(err));
+        }
+        throw err;
       }
 
       const existing = await domainsRepo.findDomainByDomain(project.id, request.body.domain);
@@ -266,6 +285,7 @@ export async function domainsRoutes(app: FastifyInstance) {
 
       const newStatus = allRequiredOk ? 'verified' : 'failed';
       await domainsRepo.updateDomainStatus(domain.id, newStatus, allRequiredOk);
+      if (allRequiredOk) schedulePostfixInboundSync('domain-verified');
 
       const fresh = await domainsRepo.findDomainWithRecords(domain.id);
       const { dkim_private_key_encrypted: _dkimPrivate, ...publicDomain } = fresh!;

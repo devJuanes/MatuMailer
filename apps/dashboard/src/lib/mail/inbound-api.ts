@@ -67,7 +67,7 @@ export function mapInboundToEmail(m: ApiInboundMessage): InboxEmail {
     folder: (m.folder as MailFolder) || 'inbox',
     account: m.to_email,
     section: sectionFor(ts),
-    quickReplies: ['Thanks!', 'Got it', "I'll get back to you"],
+    quickReplies: ['¡Gracias!', 'Recibido', 'Te respondo pronto'],
   };
 }
 

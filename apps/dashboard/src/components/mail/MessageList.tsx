@@ -30,10 +30,10 @@ interface MessageListProps {
 }
 
 const FILTERS: { id: FilterTab; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'primary', label: 'Primary' },
-  { id: 'promotions', label: 'Promotions' },
-  { id: 'socials', label: 'Socials' },
+  { id: 'all', label: 'Todos' },
+  { id: 'primary', label: 'Principal' },
+  { id: 'promotions', label: 'Promociones' },
+  { id: 'socials', label: 'Social' },
 ];
 
 export function MessageList({
@@ -185,7 +185,7 @@ export function MessageList({
               onClick={onTogglePinnedSection}
               className="text-xs text-zinc-500 hover:text-zinc-300"
             >
-              {pinnedOpen ? 'Hide' : 'Show'}
+              {pinnedOpen ? 'Ocultar' : 'Mostrar'}
             </button>
           )}
         </div>
@@ -246,7 +246,7 @@ export function MessageList({
             <Sparkles size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-amber-50">Smart responses</p>
+            <p className="text-sm font-semibold text-amber-50">Respuestas inteligentes</p>
             <p className="text-xs text-amber-200/50">Simplify your process with AI</p>
           </div>
           <button
@@ -269,13 +269,13 @@ export function MessageList({
 
       <div className="flex-1 overflow-y-auto px-2 pb-4">
         {emails.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-zinc-500">No messages here.</p>
+          <p className="px-4 py-8 text-center text-sm text-zinc-500">No hay mensajes aquí.</p>
         ) : (
           <>
-            {section('Pinned', pinned, true)}
-            {section('Today', today)}
-            {section('Yesterday', yesterday)}
-            {section('Earlier', earlier)}
+            {section('Fijados', pinned, true)}
+            {section('Hoy', today)}
+            {section('Ayer', yesterday)}
+            {section('Anteriores', earlier)}
           </>
         )}
       </div>

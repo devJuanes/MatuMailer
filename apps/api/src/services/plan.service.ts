@@ -80,6 +80,30 @@ export async function assertCanCreateTemplate(userId: string): Promise<void> {
   }
 }
 
+export async function assertCanCreateDomain(userId: string): Promise<void> {
+  if (await isPremiumUser(userId)) return;
+  const count = await planUsageRepo.countDomainsByUserId(userId);
+  if (count >= FREE_PLAN_LIMITS.maxDomains) {
+    throw new PlanLimitError(
+      'DOMAIN_LIMIT',
+      `Plan gratis: máximo ${FREE_PLAN_LIMITS.maxDomains} dominio. Actualiza a Premium para más.`,
+      { limit: FREE_PLAN_LIMITS.maxDomains, current: count },
+    );
+  }
+}
+
+export async function assertCanCreateAlias(userId: string): Promise<void> {
+  if (await isPremiumUser(userId)) return;
+  const count = await planUsageRepo.countAliasesByUserId(userId);
+  if (count >= FREE_PLAN_LIMITS.maxAliases) {
+    throw new PlanLimitError(
+      'ALIAS_LIMIT',
+      `Plan gratis: máximo ${FREE_PLAN_LIMITS.maxAliases} aliases. Actualiza a Premium para más.`,
+      { limit: FREE_PLAN_LIMITS.maxAliases, current: count },
+    );
+  }
+}
+
 export async function assertCanSendTestEmail(userId: string): Promise<void> {
   if (await isPremiumUser(userId)) return;
   const count = await planUsageRepo.countTestEmailsByUserId(userId);

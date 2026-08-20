@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import { MailSidebar } from '@/components/mail/MailSidebar';
 import { MessageList } from '@/components/mail/MessageList';
 import { MessageView } from '@/components/mail/MessageView';
+import { ComposeModal } from '@/components/mail/ComposeModal';
 import { useProjects } from '@/hooks/use-project';
-import { getToken } from '@/lib/api';
+import { api, getToken } from '@/lib/api';
 import { listAliases } from '@/lib/db/aliases';
 import { signOut } from '@/lib/auth-matudb';
 import {
@@ -24,6 +25,15 @@ import type {
 
 type FilterTab = 'all' | MailCategory;
 
+const FOLDER_TITLES: Record<MailFolder, string> = {
+  inbox: 'Bandeja de entrada',
+  favorite: 'Favoritos',
+  sent: 'Enviados',
+  archive: 'Archivo',
+  spam: 'Spam',
+  trash: 'Papelera',
+};
+
 export default function MailInboxPage() {
   const router = useRouter();
   const { activeId, projects } = useProjects();
@@ -38,6 +48,12 @@ export default function MailInboxPage() {
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeDefaults, setComposeDefaults] = useState<{
+    to?: string;
+    subject?: string;
+  }>({});
+  const [sending, setSending] = useState(false);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -119,11 +135,45 @@ export default function MailInboxPage() {
     }
   };
 
+  const resolveFrom = () => {
+    if (account !== 'all') return account;
+    if (selected?.account) return selected.account;
+    return accounts[0]?.email || '';
+  };
+
+  const sendMail = async (payload: { from: string; to: string; subject: string; text: string }) => {
+    if (!activeId) return;
+    setSending(true);
+    try {
+      const html = `<div style="font-family:system-ui,sans-serif;white-space:pre-wrap">${payload.text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')}</div>`;
+      await api('/api/emails/send', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId: activeId,
+          from: payload.from,
+          to: payload.to,
+          subject: payload.subject,
+          html,
+          text: payload.text,
+        }),
+      });
+      showToast('Correo enviado');
+      setComposeOpen(false);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'No se pudo enviar');
+    } finally {
+      setSending(false);
+    }
+  };
+
   const inboxCount = emails.filter((e) => e.folder === 'inbox' && e.unread).length;
   const favoriteCount = emails.filter((e) => e.starred).length;
   const project = projects.find((p) => p.id === activeId);
   const userName = project?.name || 'Matu Mail';
-  const userEmail = accounts[0]?.email || '';
+  const userEmail = account !== 'all' ? account : accounts[0]?.email || '';
   const userAvatar = `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(userName)}&backgroundColor=c0aede`;
 
   return (
@@ -142,6 +192,10 @@ export default function MailInboxPage() {
         onAccountChange={setAccount}
         onSearchChange={setSearch}
         onSearchFocus={() => undefined}
+        onCompose={() => {
+          setComposeDefaults({});
+          setComposeOpen(true);
+        }}
         onGoApi={() => router.push('/dashboard')}
         onLogout={async () => {
           await signOut();
@@ -150,7 +204,7 @@ export default function MailInboxPage() {
       />
 
       <MessageList
-        title={folder === 'inbox' ? 'Inbox' : folder}
+        title={FOLDER_TITLES[folder]}
         emails={visibleEmails}
         selectedId={selectedId}
         filter={filter}
@@ -224,8 +278,39 @@ export default function MailInboxPage() {
             setSelectedId(visibleEmails[selectedIndex + 1].id);
           }
         }}
-        onSend={() => showToast('Respuesta en cola (próximamente)')}
-        onQuickReply={() => undefined}
+        onSend={(text) => {
+          if (!selected) return;
+          void sendMail({
+            from: resolveFrom() || selected.account,
+            to: selected.from.email,
+            subject: selected.subject.startsWith('Re:')
+              ? selected.subject
+              : `Re: ${selected.subject}`,
+            text,
+          });
+        }}
+        onQuickReply={(text) => {
+          if (!selected) return;
+          void sendMail({
+            from: resolveFrom() || selected.account,
+            to: selected.from.email,
+            subject: selected.subject.startsWith('Re:')
+              ? selected.subject
+              : `Re: ${selected.subject}`,
+            text,
+          });
+        }}
+      />
+
+      <ComposeModal
+        open={composeOpen}
+        accounts={accounts}
+        defaultFrom={resolveFrom()}
+        defaultTo={composeDefaults.to}
+        defaultSubject={composeDefaults.subject}
+        sending={sending}
+        onClose={() => setComposeOpen(false)}
+        onSend={(p) => void sendMail(p)}
       />
 
       {loading && (

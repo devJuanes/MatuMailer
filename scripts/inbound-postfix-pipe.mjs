@@ -10,12 +10,14 @@
  *   INBOUND_API_URL=https://matumailer.matubyte.com/api/inbound/ingest
  *   INBOUND_WEBHOOK_SECRET=...
  */
-import { createInterface } from 'node:readline';
 import { stdin } from 'node:process';
 
 const API_URL =
   process.env.INBOUND_API_URL || 'https://matumailer.matubyte.com/api/inbound/ingest';
 const SECRET = process.env.INBOUND_WEBHOOK_SECRET || '';
+
+/** Postfix pasa ${recipient} como argv[2] */
+const ARG_RECIPIENT = process.argv[2] || '';
 
 function parseHeaders(raw) {
   const headers = {};
@@ -45,6 +47,7 @@ async function main() {
   const body = lines.slice(bodyStart).join('\n');
 
   const to =
+    ARG_RECIPIENT ||
     process.env.RECIPIENT ||
     headers['delivered-to'] ||
     headers['x-original-to'] ||

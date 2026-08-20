@@ -76,8 +76,8 @@ export function MessageView({
           <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-600">
             <Sparkles size={24} />
           </div>
-          <p className="text-sm font-medium text-zinc-400">Select a message to read</p>
-          <p className="mt-1 text-xs text-zinc-600">Your inbox is ready when you are</p>
+          <p className="text-sm font-medium text-zinc-400">Selecciona un mensaje</p>
+          <p className="mt-1 text-xs text-zinc-600">Tu bandeja está lista</p>
         </div>
       </section>
     );
@@ -112,11 +112,11 @@ export function MessageView({
     <section className="animate-fade-in flex h-full min-w-0 flex-1 flex-col bg-[#0c0c0e]">
       <div className="flex items-center justify-between border-b border-zinc-800/60 px-4 py-2">
         <div className="flex items-center gap-0.5">
-          {toolBtn('Back', onBack, ArrowLeft)}
-          {toolBtn('Archive', onArchive, Archive)}
+          {toolBtn('Volver', onBack, ArrowLeft)}
+          {toolBtn('Archivar', onArchive, Archive)}
           {toolBtn('Spam', onSpam, AlertOctagon)}
-          {toolBtn('Trash', onTrash, Trash2)}
-          {toolBtn('Star', onToggleStar, Star, email.starred)}
+          {toolBtn('Papelera', onTrash, Trash2)}
+          {toolBtn('Favorito', onToggleStar, Star, email.starred)}
           {toolBtn('Pin', onTogglePin, Pin, email.pinned, 'text-zinc-200')}
           {toolBtn('Move', () => undefined, FolderInput)}
           {toolBtn('More', () => undefined, MoreHorizontal)}
@@ -132,7 +132,7 @@ export function MessageView({
             <ChevronLeft size={16} />
           </button>
           <span>
-            {index + 1} of {total}
+            {index + 1} de {total}
           </span>
           <button
             type="button"
@@ -157,7 +157,7 @@ export function MessageView({
             <div className="mb-2 flex items-center gap-2 text-amber-400">
               <Sparkles size={16} />
               <span className="text-sm font-semibold text-amber-100">
-                Summary of {email.from.name}&apos;s Email
+                Resumen del correo de {email.from.name}
               </span>
             </div>
             <p className="text-sm leading-relaxed text-amber-100/70">{email.summary}</p>
@@ -274,7 +274,7 @@ export function MessageView({
                 type="button"
                 onClick={() =>
                   setDraft(
-                    `Thanks for reaching out about "${email.subject}". I'd love to continue this conversation — when works for you?`,
+                    `Gracias por escribir sobre "${email.subject}". ¿Cuándo te viene bien continuar la conversación?`,
                   )
                 }
                 className="flex shrink-0 items-center gap-1.5 rounded-lg bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-white"
@@ -287,7 +287,7 @@ export function MessageView({
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={3}
-              placeholder="Write a reply…"
+              placeholder="Escribe una respuesta…"
               className="w-full resize-none bg-transparent px-3 py-2.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600"
             />
             <div className="flex items-center justify-between px-2 pb-2">
@@ -336,7 +336,7 @@ export function MessageView({
                   setDraft('');
                 }}
                 className="flex size-9 items-center justify-center rounded-full bg-blue-500 text-white transition-colors hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Send"
+                aria-label="Enviar"
               >
                 <ArrowUp size={18} strokeWidth={2.5} />
               </button>

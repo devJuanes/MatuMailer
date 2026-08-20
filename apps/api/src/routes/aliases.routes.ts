@@ -3,6 +3,12 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { createAliasSchema, listAliasesQuerySchema, updateAliasSchema } from '@matumailer/shared';
 import { aliasesRepo, domainsRepo, projectsRepo } from '@matumailer/database';
 import { z } from 'zod';
+import {
+  assertCanCreateAlias,
+  isPlanLimitError,
+  planLimitReply,
+} from '../services/plan.service.js';
+import { schedulePostfixInboundSync } from '../services/postfix-inbound-sync.js';
 
 function ensureProjectAccess(
   project: { user_id: string } | null,
@@ -70,7 +76,11 @@ export async function aliasesRoutes(app: FastifyInstance) {
       if (!projectId) {
         return reply.status(400).send({ error: 'PROJECT_REQUIRED' });
       }
-      if (request.projectId && request.query.projectId && request.projectId !== request.query.projectId) {
+      if (
+        request.projectId &&
+        request.query.projectId &&
+        request.projectId !== request.query.projectId
+      ) {
         return reply.status(403).send({ error: 'SENDING_IDENTITY_NOT_ALLOWED' });
       }
       const proj = await projectsRepo.findProjectById(projectId);
@@ -109,6 +119,15 @@ export async function aliasesRoutes(app: FastifyInstance) {
         });
       }
 
+      try {
+        await assertCanCreateAlias(request.userId!);
+      } catch (err) {
+        if (isPlanLimitError(err)) {
+          return reply.status(402).send(planLimitReply(err));
+        }
+        throw err;
+      }
+
       const fullEmail = `${localPart.toLowerCase()}@${domain.domain}`;
 
       try {
@@ -136,6 +155,7 @@ export async function aliasesRoutes(app: FastifyInstance) {
           }
         }
 
+        schedulePostfixInboundSync('alias-create');
         return reply.status(201).send({ alias });
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'No se pudo crear el alias';
@@ -186,6 +206,7 @@ export async function aliasesRoutes(app: FastifyInstance) {
         } else if (body.isDefault === false && existing.is_default) {
           await projectsRepo.setDefaultAlias(existing.mailer_domains.project_id, null);
         }
+        schedulePostfixInboundSync('alias-update');
         return { alias: updated };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Update failed';
@@ -211,6 +232,7 @@ export async function aliasesRoutes(app: FastifyInstance) {
       if (!existing) return reply.status(404).send({ error: 'Not Found' });
 
       await aliasesRepo.deleteAlias(request.params.id);
+      schedulePostfixInboundSync('alias-delete');
       return { deleted: true };
     },
   );

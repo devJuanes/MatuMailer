@@ -13,6 +13,7 @@ import {
   AlertOctagon,
   LayoutDashboard,
   LogOut,
+  PenLine,
 } from 'lucide-react';
 import type { AccountId, MailAccount, MailFolder } from '@/lib/mail/types';
 
@@ -34,6 +35,7 @@ interface MailSidebarProps {
   onSearchFocus: () => void;
   onGoApi: () => void;
   onLogout: () => void;
+  onCompose: () => void;
 }
 
 export function MailSidebar({
@@ -52,6 +54,7 @@ export function MailSidebar({
   onSearchFocus,
   onGoApi,
   onLogout,
+  onCompose,
 }: MailSidebarProps) {
   const navItem = (
     id: MailFolder,
@@ -110,7 +113,7 @@ export function MailSidebar({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             onFocus={onSearchFocus}
-            placeholder="Search"
+            placeholder="Buscar"
             className="min-w-0 flex-1 bg-transparent text-sm text-zinc-200 outline-none placeholder:text-zinc-500"
           />
           <kbd className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
@@ -119,18 +122,29 @@ export function MailSidebar({
         </label>
       </div>
 
+      <div className="px-3 pb-2">
+        <button
+          type="button"
+          onClick={onCompose}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500"
+        >
+          <PenLine size={16} />
+          Redactar
+        </button>
+      </div>
+
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
-        {navItem('inbox', 'Inbox', Inbox, inboxCount)}
-        {navItem('favorite', 'Favorite', Bookmark, favoriteCount)}
-        {navItem('sent', 'Sent', Send)}
-        {navItem('archive', 'Archive', Archive)}
+        {navItem('inbox', 'Bandeja', Inbox, inboxCount)}
+        {navItem('favorite', 'Favoritos', Bookmark, favoriteCount)}
+        {navItem('sent', 'Enviados', Send)}
+        {navItem('archive', 'Archivo', Archive)}
         {navItem('spam', 'Spam', AlertOctagon)}
-        {navItem('trash', 'Trash', Trash2)}
+        {navItem('trash', 'Papelera', Trash2)}
 
         {accounts.length > 0 && (
           <div className="mt-4 space-y-1">
             <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
-              Aliases
+              Cuentas / aliases
             </p>
             {accounts.map((a) => (
               <button
@@ -167,7 +181,7 @@ export function MailSidebar({
           className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200"
         >
           <MessageSquarePlus size={18} strokeWidth={1.75} />
-          <span>Leave feedback</span>
+          <span>Enviar comentarios</span>
         </button>
         <button
           type="button"
