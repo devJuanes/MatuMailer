@@ -133,6 +133,82 @@ clave privada RSA 2048 que se generó al añadir el dominio.
 
 ---
 
+## 4.6 Aliases (`info@`, `support@`, `sales@`, ...)
+
+Por cada dominio verificado puedes crear aliases ilimitados. El alias es la identidad
+visible que aparece como `From` en el cliente del destinatario. Cualquier alias activo puede
+usarse como `from` en una llamada de envío.
+
+```ts
+// Crear
+const { alias } = await mail.createAlias(projectId, {
+  domainId: 'uuid-del-dominio',
+  localPart: 'support', // genera support@destin.com
+  displayName: 'Soporte Destin', // nombre visible
+  isDefault: true, // marca como default del dominio
+});
+
+// Listar (con filtros opcionales)
+const { aliases } = await mail.listAliases(projectId, {
+  domainId: 'uuid-del-dominio', // opcional: filtrar por dominio
+  activeOnly: true, // opcional: solo activos
+});
+
+// Editar
+await mail.updateAlias(alias.id, {
+  isActive: false,
+  displayName: 'Soporte (fuera de horario)',
+});
+
+// Eliminar
+await mail.deleteAlias(alias.id);
+```
+
+### Reglas
+
+- **`localPart`** solo acepta `a-z`, `0-9`, `.`, `_`, `+`, `-` (RFC 5321 permisivo).
+- **Un único `default = true` por dominio** (índice único parcial). El primero que crees
+  se marca automáticamente como default si no hay otro.
+- **`displayName`** aparece como el nombre del remitente en Gmail/Outlook.
+- **`replyTo`** por defecto del alias: si no lo pasas en el `mail.send()`, el server usa este.
+- Si llamas a `mail.send({ from: 'support@destin.com' })` y ese alias está `isActive: false`,
+  el server rechaza con `FROM_NOT_ALIAS_OF_VERIFIED_DOMAIN`.
+
+### Enviar con alias por defecto
+
+Si el proyecto tiene un único dominio verificado con su alias default, basta con:
+
+```ts
+await mail.send({
+  to: 'user@gmail.com',
+  subject: 'Hola',
+  html: '<p>...</p>',
+  // No pasamos `from` → el server elige el alias default del proyecto.
+});
+```
+
+### Proyectos con múltiples dominios
+
+Si el proyecto tiene `destin.com` y `otro.com` verificados, fuerza cuál usar con `domainId`:
+
+```ts
+await mail.send({
+  to: 'user@gmail.com',
+  domainId: 'uuid-de-otro-com',
+  subject: '...',
+  html: '...',
+});
+// O, equivalentemente, pasando un `from` concreto:
+await mail.send({
+  to: 'user@gmail.com',
+  from: 'info@otro.com',
+  subject: '...',
+  html: '...',
+});
+```
+
+---
+
 ### Paso A — Crear la plantilla
 
 1. Entra al dashboard → tu proyecto → **Plantillas** (o **Creador**).

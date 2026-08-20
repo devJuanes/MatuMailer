@@ -9,7 +9,6 @@ import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod
 import authPlugin from './plugins/auth.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { projectsRoutes } from './routes/projects.routes.js';
-import { smtpRoutes } from './routes/smtp.routes.js';
 import { templatesRoutes } from './routes/templates.routes.js';
 import { emailsRoutes } from './routes/emails.routes.js';
 import { billingRoutes } from './routes/billing.routes.js';
@@ -18,6 +17,7 @@ import { brandingRoutes } from './routes/branding.routes.js';
 import { trackingRoutes } from './routes/tracking.routes.js';
 import { domainsRoutes } from './routes/domains.routes.js';
 import { matudbProxyRoutes } from './routes/matudb-proxy.routes.js';
+import { aliasesRoutes } from './routes/aliases.routes.js';
 import { startScheduleWorker } from './services/schedule.service.js';
 import { getMatuOps, reportMatuOpsError, startMatuOps, stopMatuOps } from './lib/matuops.js';
 
@@ -76,13 +76,13 @@ async function buildServer() {
 
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(projectsRoutes, { prefix: '/api/projects' });
-  await app.register(smtpRoutes, { prefix: '/api/smtp' });
   await app.register(templatesRoutes, { prefix: '/api/templates' });
   await app.register(emailsRoutes, { prefix: '/api/emails' });
   await app.register(billingRoutes, { prefix: '/api/billing' });
   await app.register(contactsRoutes, { prefix: '/api/contacts' });
   await app.register(brandingRoutes, { prefix: '/api/branding' });
   await app.register(domainsRoutes, { prefix: '/api/domains' });
+  await app.register(aliasesRoutes, { prefix: '/api/aliases' });
   // Proxy transparente a MatuDB para evitar CORS en el dashboard.
   await app.register(matudbProxyRoutes);
   await app.register(trackingRoutes);

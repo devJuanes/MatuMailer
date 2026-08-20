@@ -234,4 +234,83 @@ domains
     console.log(chalk.green(`\n  ${opts.id} ahora es el dominio por defecto.\n`));
   });
 
+const aliasesCmd = program.command('aliases').description('Gestiona aliases de envío');
+
+aliasesCmd
+  .command('list')
+  .description('Lista los aliases configurados')
+  .requiredOption('-p, --project-id <id>', 'ID del proyecto')
+  .option('-d, --domain-id <id>', 'Filtrar por dominio')
+  .option('--active-only', 'Solo aliases activos', false)
+  .option('-u, --base-url <url>', 'API URL', process.env.MATUMAILER_API_URL)
+  .action(
+    async (opts: {
+      projectId: string;
+      domainId?: string;
+      activeOnly: boolean;
+      baseUrl?: string;
+    }) => {
+      const mail = new MatuMailer({ token: loadToken(), baseUrl: opts.baseUrl });
+      const { aliases } = await mail.listAliases(opts.projectId, {
+        domainId: opts.domainId,
+        activeOnly: opts.activeOnly,
+      });
+      if (!aliases.length) {
+        console.log(chalk.yellow('\n  No hay aliases. Crea uno con: matumailer aliases add\n'));
+        return;
+      }
+      console.log(chalk.cyan.bold('\n  Aliases del proyecto\n'));
+      for (const a of aliases) {
+        const status = a.is_active ? chalk.green('active') : chalk.red('inactive');
+        const def = a.is_default ? chalk.yellow(' ★ default') : '';
+        console.log(`  ${a.full_email.padEnd(40)} ${status}${def}  (${a.domain})`);
+        if (a.display_name) console.log(`     └ display_name: ${a.display_name}`);
+      }
+      console.log();
+    },
+  );
+
+aliasesCmd
+  .command('add')
+  .description('Crea un nuevo alias')
+  .requiredOption('-p, --project-id <id>', 'ID del proyecto')
+  .requiredOption('-d, --domain-id <id>', 'ID del dominio verificado')
+  .requiredOption('-l, --local-part <part>', 'Parte local (ej: support)')
+  .option('-n, --name <name>', 'Display name (ej: Soporte)')
+  .option('-r, --reply-to <email>', 'Reply-To por defecto')
+  .option('--default', 'Marcar como alias default', false)
+  .option('-u, --base-url <url>', 'API URL', process.env.MATUMAILER_API_URL)
+  .action(
+    async (opts: {
+      projectId: string;
+      domainId: string;
+      localPart: string;
+      name?: string;
+      replyTo?: string;
+      default: boolean;
+      baseUrl?: string;
+    }) => {
+      const mail = new MatuMailer({ token: loadToken(), baseUrl: opts.baseUrl });
+      const { alias } = await mail.createAlias(opts.projectId, {
+        domainId: opts.domainId,
+        localPart: opts.localPart,
+        displayName: opts.name ?? null,
+        replyTo: opts.replyTo ?? null,
+        isDefault: opts.default,
+      });
+      console.log(chalk.green(`\n  ✓ Alias creado: ${alias.full_email} (id: ${alias.id})\n`));
+    },
+  );
+
+aliasesCmd
+  .command('remove')
+  .description('Elimina un alias')
+  .requiredOption('--id <id>', 'ID del alias')
+  .option('-u, --base-url <url>', 'API URL', process.env.MATUMAILER_API_URL)
+  .action(async (opts: { id: string; baseUrl?: string }) => {
+    const mail = new MatuMailer({ token: loadToken(), baseUrl: opts.baseUrl });
+    await mail.deleteAlias(opts.id);
+    console.log(chalk.green(`\n  Alias ${opts.id} eliminado.\n`));
+  });
+
 program.parse();

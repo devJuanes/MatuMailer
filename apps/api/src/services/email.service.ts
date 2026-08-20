@@ -1,16 +1,15 @@
 import crypto from 'crypto';
 import nodemailer, { type Transporter } from 'nodemailer';
-import type { SmtpConfig } from '@matumailer/shared';
+import type { Domain, DomainAliasWithDomain } from '@matumailer/shared';
 import {
+  aliasesRepo,
   brandingRepo,
   campaignsRepo,
   contactsRepo,
   domainsRepo,
   emailLogsRepo,
-  smtpConfigsRepo,
   templatesRepo,
 } from '@matumailer/database';
-import { normalizeSmtpPassword, normalizeSmtpUsername } from '@matumailer/shared';
 import { decrypt } from '../lib/crypto.js';
 import {
   buildMessageId,
@@ -19,58 +18,195 @@ import {
 } from '../lib/deliverability-mail.js';
 import { applyBranding, injectTracking } from '../lib/branding-render.js';
 import { humanizeEmailError } from '../lib/humanize-error.js';
-import { renderTemplate as _renderTemplate } from '../lib/template-engine.js';
 import { signDkim } from '../lib/dkim-sign.js';
 
-function smtpAuth(config: SmtpConfig) {
-  const user = normalizeSmtpUsername(config.username);
-  const pass = normalizeSmtpPassword(config.provider, decrypt(config.password_encrypted));
-  return { user, pass };
+// ─────────────────────────────────────────────────────────────────────────────
+// MATUMAILER OUTBOUND
+//
+// Todo el correo saliente va por un Postfix local (127.0.0.1:25) configurado
+// como send-only. Node.js firma DKIM por cada mensaje usando la clave privada
+// del dominio verificado correspondiente. No hay SMTP propio del usuario:
+// cada proyecto envía desde su(s) dominio(s) verificado(s).
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ResolvedFrom {
+  fromEmail: string;
+  fromName: string | null;
+  replyTo: string | null;
+  domain: Domain;
 }
 
-export async function createTransporter(config: SmtpConfig): Promise<Transporter> {
-  const auth = smtpAuth(config);
-  const port = config.port;
+interface OutboundTransport {
+  transport: Transporter;
+  dkimDomain: string;
+  dkimSelector: string;
+  dkimPrivateKey: string;
+}
 
-  if (config.provider === 'gmail') {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth,
-    });
-  }
-
+/** Crea el transporte al Postfix local (sin TLS + sin AUTH; solo localhost). */
+function buildLocalTransport(): Transporter {
   return nodemailer.createTransport({
-    host: config.host,
-    port,
-    secure: config.secure || port === 465,
-    requireTLS: port === 587,
-    auth,
-    tls: {
-      minVersion: 'TLSv1.2',
-    },
+    host: '127.0.0.1',
+    port: 25,
+    secure: false,
+    tls: { rejectUnauthorized: false },
+    connectionTimeout: 10_000,
+    greetingTimeout: 5_000,
   });
 }
 
-export async function testSmtpConnection(config: SmtpConfig): Promise<boolean> {
-  const tryVerify = async (cfg: SmtpConfig) => {
-    const transport = await createTransporter(cfg);
-    try {
-      await transport.verify();
-      return true;
-    } finally {
-      transport.close();
+/**
+ * Resuelve el `from` que se usará para enviar.
+ *
+ *   - Si el caller pasa `from` explícito, validamos que sea un alias activo de
+ *     un dominio verificado del proyecto.
+ *   - Si no, intentamos:
+ *       1. alias `default` del `default_domain_id` del proyecto
+ *       2. primer alias activo del dominio por defecto
+ *       3. primer alias activo de cualquier dominio verificado
+ *
+ * Devuelve también el `Domain` padre para poder firmar DKIM con sus claves.
+ */
+async function resolveFromAndDomain(
+  projectId: string,
+  override: { from?: string; domainId?: string },
+): Promise<ResolvedFrom> {
+  if (override.from) {
+    const alias = await aliasesRepo.findAliasByEmail(projectId, override.from);
+    if (!alias) {
+      throw new Error(
+        'FROM_NOT_ALIAS_OF_VERIFIED_DOMAIN — el `from` debe ser un alias activo de un dominio verificado del proyecto',
+      );
     }
-  };
+    const domain = await domainsRepo.findDomainById(alias.domain_id);
+    if (!domain || domain.status !== 'verified') {
+      throw new Error('FROM_DOMAIN_NOT_VERIFIED');
+    }
+    return {
+      fromEmail: alias.full_email,
+      fromName: alias.display_name,
+      replyTo: alias.reply_to,
+      domain,
+    };
+  }
 
+  // Sin `from` explícito: resolver por `domainId` o por default
+  let domain: Domain | null = null;
+
+  if (override.domainId) {
+    domain = await domainsRepo.findDomainById(override.domainId);
+  } else {
+    domain = await domainsRepo.getProjectDefaultDomain(projectId);
+  }
+
+  if (!domain || domain.status !== 'verified') {
+    throw new Error('NO_VERIFIED_DOMAIN — agrega y verifica un dominio o especifica `domainId`');
+  }
+
+  const defaultAlias = await aliasesRepo.findDefaultAlias(projectId);
+  let alias: DomainAliasWithDomain | null = defaultAlias;
+  if (!alias || alias.domain_id !== domain.id) {
+    // Buscar primer alias activo del dominio concreto
+    alias = await aliasesRepo.findFirstActiveAlias(domain.id);
+  }
+  if (!alias) {
+    throw new Error(
+      `NO_ALIAS_ON_DOMAIN — crea al menos un alias en ${domain.domain} antes de enviar`,
+    );
+  }
+  return {
+    fromEmail: alias.full_email,
+    fromName: alias.display_name,
+    replyTo: alias.reply_to,
+    domain,
+  };
+}
+
+async function getOutboundTransport(domain: Domain): Promise<OutboundTransport> {
+  const privateKey = decrypt(domain.dkim_private_key_encrypted);
+  return {
+    transport: buildLocalTransport(),
+    dkimDomain: domain.domain,
+    dkimSelector: domain.dkim_selector,
+    dkimPrivateKey: privateKey,
+  };
+}
+
+/**
+ * Resuelve el `from` por defecto cuando el caller no especifica uno. Usado
+ * por `sendEmailToOne` para no romper compatibilidad con llamadas que no pasan
+ * `from`. Ahora delega en `resolveFromAndDomain`.
+ */
+async function _resolveDefaultFrom(projectId: string): Promise<string> {
   try {
-    return await tryVerify(config);
-  } catch (firstErr) {
-    if (config.provider === 'gmail' && config.port === 587 && !config.secure) {
-      return await tryVerify({ ...config, port: 465, secure: true });
-    }
-    throw firstErr;
+    const resolved = await resolveFromAndDomain(projectId, {});
+    return resolved.fromEmail;
+  } catch {
+    throw new Error('NO_DEFAULT_FROM — crea y verifica al menos un dominio con un alias activo');
   }
 }
+void _resolveDefaultFrom; // reservada para futuros entry-points
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PREPARACIÓN DE MENSAJES
+// ─────────────────────────────────────────────────────────────────────────────
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeAddressList(value: string | string[] | undefined): string | undefined {
+  if (!value) return undefined;
+  return Array.isArray(value) ? value.join(', ') : value;
+}
+
+/**
+ * Construye el mensaje MIME crudo para firmar DKIM. Lo usamos antes de pasar
+ * por nodemailer para que la firma cubra exactamente los headers que verá el
+ * receptor. (Nodemailer lo reordena ligeramente si lo construimos con su API.)
+ */
+function buildMimeMessage(params: {
+  from: string;
+  fromName: string | null;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  replyTo: string | null;
+  cc?: string;
+  bcc?: string;
+  headers?: Record<string, string>;
+  messageId: string;
+  date: string;
+  listUnsubscribe?: string | null;
+}): string {
+  const fromHeader = params.fromName
+    ? `From: "${params.fromName.replace(/"/g, "'")}" <${params.from}>\r\n`
+    : `From: ${params.from}\r\n`;
+  const headers: string[] = [
+    fromHeader,
+    `To: ${params.to}\r\n`,
+    params.replyTo ? `Reply-To: ${params.replyTo}\r\n` : '',
+    params.cc ? `Cc: ${params.cc}\r\n` : '',
+    params.bcc ? `Bcc: ${params.bcc}\r\n` : '',
+    `Subject: ${params.subject}\r\n`,
+    `Date: ${params.date}\r\n`,
+    `Message-ID: ${params.messageId}\r\n`,
+    `MIME-Version: 1.0\r\n`,
+    `Content-Type: text/html; charset=utf-8\r\n`,
+    `Content-Transfer-Encoding: quoted-printable\r\n`,
+    params.listUnsubscribe ? `List-Unsubscribe: ${params.listUnsubscribe}\r\n` : '',
+    `List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n`,
+  ];
+  if (params.headers) {
+    for (const [k, v] of Object.entries(params.headers)) headers.push(`${k}: ${v}\r\n`);
+  }
+  return headers.join('') + `\r\n${params.html}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENVÍO PRINCIPAL
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface SendEmailOptions {
   projectId: string;
@@ -85,30 +221,13 @@ export interface SendEmailOptions {
   groupId?: string | null;
   from?: string;
   fromName?: string;
+  /** Forzar el dominio verificado cuando el proyecto tiene varios. */
+  domainId?: string;
   replyTo?: string | string[];
   cc?: string | string[];
   bcc?: string | string[];
   headers?: Record<string, string>;
   tags?: Array<{ name: string; value: string }>;
-}
-
-export interface BulkRecipient {
-  email: string;
-  data?: Record<string, unknown>;
-  name?: string | null;
-}
-
-export interface BulkSendResult {
-  total: number;
-  sent: number;
-  failed: number;
-  results: Array<{
-    email: string;
-    id?: string;
-    status: string;
-    error?: string;
-    userMessage?: string;
-  }>;
 }
 
 interface ResolvedMailContent {
@@ -121,8 +240,8 @@ interface ResolvedMailContent {
 function publicApiBase(): string {
   return (
     process.env.PUBLIC_API_URL ||
-    process.env.MATUMAILER_PUBLIC_URL ||
-    `http://localhost:${process.env.PORT ?? 4000}`
+    process.env.MATUMAILERER_URL ||
+    `http://localhost:${process.env.PORT ?? 4001}`
   ).replace(/\/$/, '');
 }
 
@@ -154,123 +273,7 @@ async function resolveMailContent(
     subject = rendered.subject;
   }
 
-  return { subject, html, text, templateSlug };
-}
-
-/** Resuelve el `from` por defecto cuando el caller no especifica uno. */
-async function resolveDefaultFrom(projectId: string): Promise<string> {
-  const smtp = await smtpConfigsRepo.findSmtpByProjectId(projectId);
-  if (smtp) return smtp.from_email;
-  const defaultDomain = await domainsRepo.getProjectDefaultDomain(projectId);
-  if (defaultDomain) return `noreply@${defaultDomain.domain}`;
-  throw new Error('NO_DEFAULT_FROM');
-}
-
-/** Resuelve el `fromName` por defecto cuando el caller no especifica uno. */
-async function resolveDefaultFromName(projectId: string): Promise<string | null> {
-  const smtp = await smtpConfigsRepo.findSmtpByProjectId(projectId);
-  return smtp?.from_name ?? null;
-}
-
-/**
- * Resuelve el transporte de salida. Tres modos:
- *
- *  1. SMTP propio del proyecto (Gmail/Outlook/Zoho) — flujo legacy.
- *  2. **MatuMailer SMTP** (Postfix local en `127.0.0.1:25`) — modo Resend-like.
- *     Solo se permite cuando hay un dominio verificado en el proyecto (para
- *     firmar DKIM con la clave privada del dominio).
- *  3. Fallback: error si no hay ninguna de las dos.
- */
-interface OutboundTransport {
-  transport: Transporter;
-  /** Cuando viene del modo MatuMailer, estos campos están poblados para DKIM. */
-  dkimDomain?: string;
-  dkimSelector?: string;
-  dkimPrivateKey?: string;
-}
-
-async function getOutboundTransport(
-  projectId: string,
-  fromEmail: string,
-): Promise<OutboundTransport> {
-  // 1) SMTP propio si está configurado y verificado
-  const smtp = await smtpConfigsRepo.findSmtpByProjectId(projectId);
-  if (smtp?.is_verified) {
-    return { transport: await createTransporter(smtp) };
-  }
-
-  // 2) Modo MatuMailer SMTP: requiere dominio verificado que matchee el `from`
-  const verifiedDomain = await domainsRepo.findVerifiedDomainForEmail(projectId, fromEmail);
-  if (verifiedDomain) {
-    const privateKey = decrypt(verifiedDomain.dkim_private_key_encrypted);
-    return {
-      transport: nodemailer.createTransport({
-        host: '127.0.0.1',
-        port: 25,
-        secure: false,
-        // Postfix local sin TLS + sin AUTH; el DKIM lo firmamos nosotros en Node.
-        tls: { rejectUnauthorized: false },
-        // Evitar esperar el banner de Postfix con un HELO largo.
-        connectionTimeout: 10_000,
-        greetingTimeout: 5_000,
-      }),
-      dkimDomain: verifiedDomain.domain,
-      dkimSelector: verifiedDomain.dkim_selector,
-      dkimPrivateKey: privateKey,
-    };
-  }
-
-  // 3) Sin SMTP y sin dominio verificado para el `from`
-  throw new Error(smtp ? 'SMTP_NOT_VERIFIED' : 'SMTP_NOT_CONFIGURED_OR_DOMAIN_UNVERIFIED');
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalizeAddressList(value: string | string[] | undefined): string | undefined {
-  if (!value) return undefined;
-  return Array.isArray(value) ? value.join(', ') : value;
-}
-
-function buildMimeMessage(params: {
-  from: string;
-  fromName?: string | null;
-  to: string;
-  subject: string;
-  text: string;
-  html: string;
-  replyTo?: string;
-  cc?: string;
-  bcc?: string;
-  headers?: Record<string, string>;
-  messageId: string;
-  date: string;
-  dkimHeader?: string;
-}): string {
-  const fromHeader = params.fromName
-    ? `From: "${params.fromName.replace(/"/g, "'")}" <${params.from}>\r\n`
-    : `From: ${params.from}\r\n`;
-  const headers: string[] = [
-    fromHeader,
-    `To: ${params.to}\r\n`,
-    params.replyTo ? `Reply-To: ${params.replyTo}\r\n` : '',
-    params.cc ? `Cc: ${params.cc}\r\n` : '',
-    params.bcc ? `Bcc: ${params.bcc}\r\n` : '',
-    `Subject: ${params.subject}\r\n`,
-    `Date: ${params.date}\r\n`,
-    `Message-ID: ${params.messageId}\r\n`,
-    `MIME-Version: 1.0\r\n`,
-    `Content-Type: text/html; charset=utf-8\r\n`,
-    `Content-Transfer-Encoding: quoted-printable\r\n`,
-  ];
-  if (params.dkimHeader) headers.push(`${params.dkimHeader}\r\n`);
-  if (params.headers) {
-    for (const [k, v] of Object.entries(params.headers)) {
-      headers.push(`${k}: ${v}\r\n`);
-    }
-  }
-  return headers.join('') + `\r\n${params.html}`;
+  return { subject, html, text: text ?? '', templateSlug };
 }
 
 async function sendEmailToOne(
@@ -284,6 +287,7 @@ async function sendEmailToOne(
   overrides: {
     from?: string;
     fromName?: string;
+    domainId?: string;
     replyTo?: string | string[];
     cc?: string | string[];
     bcc?: string | string[];
@@ -294,24 +298,18 @@ async function sendEmailToOne(
   const branding = await brandingRepo.getByProject(projectId);
   const trackingToken = crypto.randomBytes(24).toString('hex');
 
-  // Resolver el `from` ANTES de obtener el transporte: el modo MatuMailer SMTP
-  // exige que el dominio del `from` esté verificado.
-  const fallbackFrom = await resolveDefaultFrom(projectId);
-  const fromEmail = (overrides.from ?? fallbackFrom).trim().toLowerCase();
-  const fromName = overrides.fromName ?? (await resolveDefaultFromName(projectId));
+  // 1) Resolver `from` y dominio verificado
+  const resolved = await resolveFromAndDomain(projectId, {
+    from: overrides.from,
+    domainId: overrides.domainId,
+  });
+  const fromEmail = resolved.fromEmail;
+  const fromName = overrides.fromName ?? resolved.fromName;
 
-  const outbound = await getOutboundTransport(projectId, fromEmail);
-  const verifiedDomain =
-    outbound.dkimDomain && outbound.dkimSelector && outbound.dkimPrivateKey
-      ? {
-          id: undefined as unknown as string,
-          domain: outbound.dkimDomain,
-          dkim_selector: outbound.dkimSelector,
-          dkim_private_key_encrypted: '',
-        }
-      : null;
+  // 2) Construir transporte con DKIM del dominio
+  const outbound = await getOutboundTransport(resolved.domain);
 
-  const replyTo = normalizeAddressList(overrides.replyTo ?? fromEmail);
+  const replyTo = normalizeAddressList(overrides.replyTo ?? resolved.replyTo ?? undefined);
   const cc = normalizeAddressList(overrides.cc);
   const bcc = normalizeAddressList(overrides.bcc);
 
@@ -331,7 +329,7 @@ async function sendEmailToOne(
       data,
       from: fromEmail,
       fromName,
-      dkimDomainId: verifiedDomain?.id ?? null,
+      dkimDomainId: resolved.domain.id,
       ...logMetadata,
     },
     sent_at: null,
@@ -352,17 +350,22 @@ async function sendEmailToOne(
       logId: log.id,
     });
 
-    const transport = outbound.transport;
+    const messageId = buildMessageId(fromEmail);
+
+    const listUnsubscribe =
+      overrides.replyTo || fromEmail
+        ? `<mailto:${resolved.replyTo ?? fromEmail}?subject=unsubscribe>`
+        : null;
 
     const extraHeaders: Record<string, string> = {
       ...prepared.headers,
-      'Message-ID': buildMessageId(fromEmail),
+      'Message-ID': messageId,
     };
 
-    if (overrides.headers) {
-      Object.assign(extraHeaders, overrides.headers);
-    }
+    if (overrides.headers) Object.assign(extraHeaders, overrides.headers);
 
+    // Cabeceras estándar de entregabilidad
+    extraHeaders['X-Mailer'] = 'MatuMailer';
     if (overrides.tags?.length) {
       for (const tag of overrides.tags) {
         extraHeaders[`X-MatuMailer-Tag-${tag.name}`] = tag.value;
@@ -371,30 +374,29 @@ async function sendEmailToOne(
 
     let dkimSignatureHeader: string | undefined;
 
-    if (outbound.dkimDomain && outbound.dkimSelector && outbound.dkimPrivateKey) {
-      try {
-        const mimeMessage = buildMimeMessage({
-          from: fromEmail,
-          fromName,
-          to,
-          subject: prepared.subject,
-          text: prepared.text,
-          html: prepared.html,
-          replyTo,
-          cc,
-          bcc,
-          headers: extraHeaders,
-          messageId: extraHeaders['Message-ID'],
-          date: new Date().toUTCString(),
-        });
-        dkimSignatureHeader = signDkim(mimeMessage, {
-          selector: outbound.dkimSelector,
-          domain: outbound.dkimDomain,
-          privateKey: outbound.dkimPrivateKey,
-        });
-      } catch (dkimErr) {
-        console.warn('[email.service] DKIM signing failed:', dkimErr);
-      }
+    try {
+      const mimeMessage = buildMimeMessage({
+        from: fromEmail,
+        fromName,
+        to,
+        subject: prepared.subject,
+        text: prepared.text,
+        html: prepared.html,
+        replyTo: replyTo ?? null,
+        cc,
+        bcc,
+        headers: extraHeaders,
+        messageId,
+        date: new Date().toUTCString(),
+        listUnsubscribe,
+      });
+      dkimSignatureHeader = signDkim(mimeMessage, {
+        selector: outbound.dkimSelector,
+        domain: outbound.dkimDomain,
+        privateKey: outbound.dkimPrivateKey,
+      });
+    } catch (dkimErr) {
+      console.warn('[email.service] DKIM signing failed:', dkimErr);
     }
 
     if (dkimSignatureHeader) {
@@ -408,7 +410,7 @@ async function sendEmailToOne(
       }
     }
 
-    await transport.sendMail({
+    await outbound.transport.sendMail({
       from: formatFromAddress(fromEmail, fromName),
       replyTo,
       to,
@@ -421,7 +423,7 @@ async function sendEmailToOne(
       encoding: 'utf-8',
       priority: 'normal',
     });
-    transport.close();
+    outbound.transport.close();
 
     await emailLogsRepo.updateEmailLogStatus(log.id, 'sent', {
       sent_at: new Date().toISOString(),
@@ -466,6 +468,7 @@ export async function sendEmail(
       {
         from: options.from,
         fromName: options.fromName,
+        domainId: options.domainId,
         replyTo: options.replyTo,
         cc: options.cc,
         bcc: options.bcc,
@@ -489,6 +492,7 @@ export async function sendEmail(
     groupId: options.groupId,
     from: options.from,
     fromName: options.fromName,
+    domainId: options.domainId,
     replyTo: options.replyTo,
     cc: options.cc,
     bcc: options.bcc,
@@ -510,24 +514,24 @@ export async function sendBulkEmail(options: {
   subject?: string;
   html?: string;
   text?: string;
-  recipients: BulkRecipient[];
+  recipients: Array<{ email: string; data?: Record<string, unknown>; name?: string | null }>;
   delayMs?: number;
   campaignId?: string | null;
   groupId?: string | null;
   from?: string;
   fromName?: string;
+  domainId?: string;
   replyTo?: string | string[];
   cc?: string | string[];
   bcc?: string | string[];
   headers?: Record<string, string>;
   tags?: Array<{ name: string; value: string }>;
 }): Promise<BulkSendResult> {
-  // Pre-validar el transporte (puede ser SMTP propio o MatuMailer SMTP) usando
-  // el `from` por defecto; las llamadas individuales revalidan de todos modos.
-  const bulkFrom = (options.from ?? (await resolveDefaultFrom(options.projectId)))
-    .trim()
-    .toLowerCase();
-  await getOutboundTransport(options.projectId, bulkFrom);
+  // Resolver y validar el `from` una sola vez (no por destinatario).
+  const resolved = await resolveFromAndDomain(options.projectId, {
+    from: options.from,
+    domainId: options.domainId,
+  });
 
   const template = options.template
     ? await templatesRepo.findTemplateBySlug(options.projectId, options.template)
@@ -578,8 +582,9 @@ export async function sendBulkEmail(options: {
         options.campaignId ?? null,
         options.groupId ?? null,
         {
-          from: options.from,
-          fromName: options.fromName,
+          from: resolved.fromEmail,
+          fromName: options.fromName ?? resolved.fromName ?? undefined,
+          domainId: resolved.domain.id,
           replyTo: options.replyTo,
           cc: options.cc,
           bcc: options.bcc,
@@ -645,7 +650,7 @@ export async function sendToGroup(options: {
       email: c.email,
       name: c.name,
       data: {
-        ...(options.data ?? {}),
+        ...options.data,
         ...(c.metadata as Record<string, unknown>),
         nombre: c.name ?? '',
       },
@@ -656,4 +661,23 @@ export async function sendToGroup(options: {
 
   await campaignsRepo.updateStatus(campaign.id, 'completed');
   return { ...result, campaignId: campaign.id };
+}
+
+export interface BulkRecipient {
+  email: string;
+  data?: Record<string, unknown>;
+  name?: string | null;
+}
+
+export interface BulkSendResult {
+  total: number;
+  sent: number;
+  failed: number;
+  results: Array<{
+    email: string;
+    id?: string;
+    status: string;
+    error?: string;
+    userMessage?: string;
+  }>;
 }

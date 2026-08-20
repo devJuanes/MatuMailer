@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface SetupStatus {
-  smtpConfigured: boolean;
+  hasVerifiedDomain: boolean;
   welcomeTemplate: boolean;
   hasApiToken: boolean;
   testEmailSent: boolean;
@@ -56,7 +56,11 @@ export default function DashboardPage() {
 
   const tasks = setup
     ? [
-        { label: 'Configurar SMTP', done: setup.smtpConfigured, href: '/dashboard/smtp' },
+        {
+          label: 'Verificar tu primer dominio',
+          done: setup.hasVerifiedDomain,
+          href: '/dashboard/domains',
+        },
         {
           label: 'Crear plantilla de bienvenida',
           done: setup.welcomeTemplate,

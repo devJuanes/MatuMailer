@@ -51,6 +51,31 @@ CREATE INDEX IF NOT EXISTS idx_mailer_projects_user_id ON mailer_projects(user_i
   CREATE INDEX IF NOT EXISTS idx_mailer_domains_project_id ON mailer_domains(project_id);
   CREATE INDEX IF NOT EXISTS idx_mailer_domains_status ON mailer_domains(status);
 
+  -- Aliases por dominio (info@dominio.com, support@dominio.com, etc.)
+  CREATE TABLE IF NOT EXISTS mailer_domain_aliases (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    domain_id UUID NOT NULL REFERENCES mailer_domains(id) ON DELETE CASCADE,
+    local_part VARCHAR(64) NOT NULL,
+    full_email VARCHAR(255) NOT NULL,
+    display_name VARCHAR(120),
+    reply_to VARCHAR(255),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(domain_id, local_part)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_mailer_domain_aliases_domain_id
+    ON mailer_domain_aliases(domain_id);
+  CREATE INDEX IF NOT EXISTS idx_mailer_domain_aliases_full_email
+    ON mailer_domain_aliases(full_email);
+
+  -- Una sola fila `default` por dominio (partial unique index).
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_mailer_domain_aliases_default
+    ON mailer_domain_aliases(domain_id)
+    WHERE is_default = TRUE;
+
   CREATE TABLE IF NOT EXISTS mailer_domain_dns_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     domain_id UUID NOT NULL REFERENCES mailer_domains(id) ON DELETE CASCADE,

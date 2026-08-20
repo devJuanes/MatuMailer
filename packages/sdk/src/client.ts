@@ -1,7 +1,9 @@
 import type {
+  Alias,
   BulkSendFromJsonPayload,
   BulkSendPayload,
   BulkSendResult,
+  CreateAliasPayload,
   CreateDomainPayload,
   DomainRecord,
   DomainVerifyResult,
@@ -10,6 +12,7 @@ import type {
   GroupSendResult,
   MatuMailerConfig,
   SendEmailPayload,
+  UpdateAliasPayload,
 } from './types.js';
 import { MatuMailerError, parseApiError } from './errors.js';
 import { detectSmtp, loadEnvToken } from './smtp-detect.js';
@@ -113,6 +116,42 @@ export class MatuMailer {
   /** Marca un dominio verificado como remitente por defecto del proyecto. */
   async setDefaultDomain(domainId: string): Promise<{ domain: string; isDefault: boolean }> {
     return this.request(`/api/domains/${domainId}/default`, { method: 'POST' });
+  }
+
+  // ─── Aliases ──────────────────────────────────────────────────────────────
+
+  /** Lista aliases de un proyecto. `domainId` opcional para filtrar por dominio. */
+  async listAliases(
+    projectId: string,
+    opts: { domainId?: string; activeOnly?: boolean } = {},
+  ): Promise<{ aliases: Alias[] }> {
+    const qs = buildQuery({
+      projectId,
+      domainId: opts.domainId,
+      activeOnly: opts.activeOnly,
+    });
+    return this.request(`/api/aliases${qs}`, { method: 'GET' });
+  }
+
+  /** Crea un alias. El `localPart` es la parte antes del `@` (ej: "support"). */
+  async createAlias(projectId: string, payload: CreateAliasPayload): Promise<{ alias: Alias }> {
+    return this.request(`/api/aliases?projectId=${projectId}`, {
+      method: 'POST',
+      body: payload,
+    });
+  }
+
+  /** Edita un alias. Solo los campos provistos se actualizan. */
+  async updateAlias(aliasId: string, payload: UpdateAliasPayload): Promise<{ alias: Alias }> {
+    return this.request(`/api/aliases/${aliasId}`, {
+      method: 'PATCH',
+      body: payload,
+    });
+  }
+
+  /** Elimina un alias. */
+  async deleteAlias(aliasId: string): Promise<{ deleted: boolean }> {
+    return this.request(`/api/aliases/${aliasId}`, { method: 'DELETE' });
   }
 
   detectSmtp(email: string) {

@@ -81,6 +81,12 @@ export const sendEmailSchema = z
     scheduledAt: z.string().datetime().optional(),
     from: z.string().email().optional(),
     fromName: z.string().max(120).optional(),
+    /**
+     * Cuando el proyecto tiene varios dominios verificados, se puede forzar
+     * desde cuál enviar resolviendo el alias por `domainId`. Si no se pasa,
+     * el server usa el `default_domain_id` del proyecto.
+     */
+    domainId: z.string().uuid().optional(),
     replyTo: z.union([z.string().email(), z.array(z.string().email())]).optional(),
     cc: z.union([z.string().email(), z.array(z.string().email())]).optional(),
     bcc: z.union([z.string().email(), z.array(z.string().email())]).optional(),
@@ -164,6 +170,37 @@ export const createDomainSchema = z.object({
 
 export const updateDomainSchema = z.object({
   region: z.enum(['us-east-1', 'sa-east-1', 'eu-west-1']).optional(),
+});
+
+// ─── Aliases ─────────────────────────────────────────────────────────────────
+// `local_part` es la parte antes del `@` del alias. La validación `^[a-z0-9._+-]+$`
+// es la convención más permisiva de RFC 5321 que todos los servidores MX aceptan.
+const localPartRegex = /^[a-z0-9._+-]+$/;
+
+export const createAliasSchema = z.object({
+  domainId: z.string().uuid(),
+  localPart: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(localPartRegex, 'Solo letras minúsculas, números, . _ + -'),
+  displayName: z.string().max(120).optional().nullable(),
+  replyTo: z.string().email().optional().nullable(),
+  isActive: z.boolean().default(true),
+  isDefault: z.boolean().default(false),
+});
+
+export const updateAliasSchema = z.object({
+  displayName: z.string().max(120).optional().nullable(),
+  replyTo: z.string().email().optional().nullable(),
+  isActive: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
+});
+
+export const listAliasesQuerySchema = z.object({
+  projectId: z.string().uuid(),
+  domainId: z.string().uuid().optional(),
+  activeOnly: z.coerce.boolean().default(false),
 });
 
 export const sendFromDomainSchema = z

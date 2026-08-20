@@ -1,11 +1,10 @@
 import { api } from '@/lib/api';
 
+/** Espejo del tipo `Domain` del backend para el front. */
 export type DomainStatus = 'pending' | 'verifying' | 'verified' | 'failed' | 'disabled';
 export type DomainRegion = 'us-east-1' | 'sa-east-1' | 'eu-west-1';
-export type DnsRecordType = 'TXT' | 'CNAME' | 'MX';
-export type DnsRecordStatus = 'pending' | 'verified' | 'failed';
 
-export interface DomainRecord {
+export type DomainRecord = {
   id: string;
   domain: string;
   region: DomainRegion;
@@ -16,31 +15,29 @@ export interface DomainRecord {
   last_verified_at: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface DomainDnsRecord {
+export type DomainDnsRecord = {
   id: string;
   domain_id: string;
-  type: DnsRecordType;
+  type: 'TXT' | 'CNAME' | 'MX';
   host: string;
   value: string;
   priority: number | null;
-  status: DnsRecordStatus;
+  status: 'pending' | 'verified' | 'failed';
   last_check_at: string | null;
   last_value: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface DomainWithRecords extends DomainRecord {
-  records: DomainDnsRecord[];
-}
+export type DomainWithRecords = DomainRecord & { records: DomainDnsRecord[] };
 
-export interface DomainVerifyResult {
+export type DomainVerifyResult = {
   domain: DomainWithRecords;
   verified: boolean;
-  missing: Array<{ type: DnsRecordType; host: string; reason: string }>;
-}
+  missing: Array<{ type: 'TXT' | 'CNAME' | 'MX'; host: string; reason: string }>;
+};
 
 export async function listDomains(projectId: string): Promise<DomainRecord[]> {
   const res = await api<{ domains: DomainRecord[] }>(`/api/domains?projectId=${projectId}`);

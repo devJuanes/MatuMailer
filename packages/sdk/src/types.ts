@@ -9,6 +9,12 @@ export interface SendEmailPayload {
   scheduledAt?: string;
   from?: string;
   fromName?: string;
+  /**
+   * Forzar el dominio verificado cuando el proyecto tiene varios. Si se omite,
+   * el server usa el `default_domain_id` del proyecto y, si no, el primer
+   * dominio verificado con un alias activo.
+   */
+  domainId?: string;
   replyTo?: string | string[];
   cc?: string | string[];
   bcc?: string | string[];
@@ -132,4 +138,34 @@ export interface DomainVerifyResult {
   domain: DomainWithRecords;
   verified: boolean;
   missing: Array<{ type: string; host: string; reason: string }>;
+}
+
+export interface Alias {
+  id: string;
+  domain_id: string;
+  local_part: string;
+  full_email: string;
+  display_name: string | null;
+  reply_to: string | null;
+  is_active: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+  domain: string;
+}
+
+export interface CreateAliasPayload {
+  domainId: string;
+  localPart: string;
+  displayName?: string | null;
+  replyTo?: string | null;
+  isActive?: boolean;
+  isDefault?: boolean;
+}
+
+export interface UpdateAliasPayload {
+  displayName?: string | null;
+  replyTo?: string | null;
+  isActive?: boolean;
+  isDefault?: boolean;
 }

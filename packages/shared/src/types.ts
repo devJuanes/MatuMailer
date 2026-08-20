@@ -253,3 +253,25 @@ export interface DomainVerificationResult {
   verified: boolean;
   missing: Array<{ type: DnsRecordType; host: string; reason: string }>;
 }
+
+/**
+ * Alias de envío (info@dominio.com, support@dominio.com, etc.) vinculado a un
+ * dominio verificado. Se usa como cabecera `From` en los envíos salientes y
+ * queda firmado con la clave DKIM del dominio padre.
+ */
+export interface DomainAlias {
+  id: string;
+  domain_id: string;
+  local_part: string;
+  full_email: string;
+  display_name: string | null;
+  reply_to: string | null;
+  is_active: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainAliasWithDomain extends DomainAlias {
+  domain: string;
+}

@@ -7,6 +7,7 @@ export interface Project {
   name: string;
   slug: string;
   description: string | null;
+  default_domain_id?: string | null;
   user_id?: string;
 }
 

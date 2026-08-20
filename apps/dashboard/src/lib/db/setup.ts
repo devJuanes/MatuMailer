@@ -1,10 +1,17 @@
-import { getMatuDb } from '@/lib/matudb';
 import { getEmailStats } from '@/lib/db/email-logs';
 import { listApiTokens } from '@/lib/db/api-tokens';
 import { listTemplates } from '@/lib/db/templates';
+import { listDomains } from '@/lib/db/domains';
 
+/**
+ * Estado del setup del proyecto para el checklist del dashboard.
+ *
+ * Antes incluía `smtpConfigured`. Como el SMTP propio ya no se usa (todo va
+ * por el relay MatuMailer + DKIM por dominio verificado), ahora el primer
+ * paso es `hasVerifiedDomain`.
+ */
 export interface SetupStatus {
-  smtpConfigured: boolean;
+  hasVerifiedDomain: boolean;
   welcomeTemplate: boolean;
   hasApiToken: boolean;
   testEmailSent: boolean;
@@ -15,60 +22,25 @@ export interface SetupStatus {
 const TOTAL_STEPS = 4;
 
 export async function getProjectSetupStatus(projectId: string): Promise<SetupStatus> {
-  const db = getMatuDb();
-
-  const [smtpRes, onboardingRes, templates, tokens, stats] = await Promise.all([
-    db.from('smtp_configs').select('id').eq('project_id', projectId).maybeSingle(),
-    db.from('project_onboarding').select('*').eq('project_id', projectId).maybeSingle(),
+  const [domains, templates, stats, tokens] = await Promise.all([
+    listDomains(projectId),
     listTemplates(projectId),
-    listApiTokens(projectId),
     getEmailStats(projectId),
+    listApiTokens(projectId),
   ]);
 
-  const smtpConfigured =
-    !!smtpRes.data ||
-    !!(onboardingRes.data as { smtp_completed_at?: string } | null)?.smtp_completed_at;
+  const hasVerifiedDomain = domains.some((d) => d.status === 'verified');
   const welcomeTemplate = templates.some((t) => t.slug === 'welcome');
   const hasApiToken = tokens.length > 0;
-  const onboarding = onboardingRes.data as { test_email_sent_at?: string } | null;
-  const testEmailSent = !!onboarding?.test_email_sent_at || stats.sent > 0;
+  const testEmailSent = stats.sent > 0;
 
-  const flags = [smtpConfigured, welcomeTemplate, hasApiToken, testEmailSent];
+  const flags = [hasVerifiedDomain, welcomeTemplate, hasApiToken, testEmailSent];
   return {
-    smtpConfigured,
+    hasVerifiedDomain,
     welcomeTemplate,
     hasApiToken,
     testEmailSent,
     completedCount: flags.filter(Boolean).length,
     totalSteps: TOTAL_STEPS,
   };
-}
-
-export async function getSmtpConfigPublic(projectId: string): Promise<{
-  provider: string;
-  host: string;
-  port: number;
-  secure: boolean;
-  username: string;
-  from_email: string;
-  from_name: string;
-  is_verified: boolean;
-} | null> {
-  const db = getMatuDb();
-  const { data, error } = await db
-    .from('smtp_configs')
-    .select('provider, host, port, secure, username, from_email, from_name, is_verified')
-    .eq('project_id', projectId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data as {
-    provider: string;
-    host: string;
-    port: number;
-    secure: boolean;
-    username: string;
-    from_email: string;
-    from_name: string;
-    is_verified: boolean;
-  } | null;
 }
