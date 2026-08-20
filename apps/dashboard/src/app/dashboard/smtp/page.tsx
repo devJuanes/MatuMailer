@@ -203,8 +203,22 @@ export default function SmtpPage() {
     <div className="space-y-6">
       <PageHeader
         title="Configuración SMTP"
-        description="Gmail, Outlook, Zoho o servidor personalizado — optimizado para bandeja principal"
+        description="Gmail, Outlook, Zoho, servidor personalizado — o usa el SMTP nativo de MatuMailer con tu dominio verificado"
       />
+
+      {domains.some((d) => d.status === 'verified') && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-900">
+          <p className="font-semibold">
+            Tienes {domains.filter((d) => d.status === 'verified').length} dominio(s) verificado(s).
+          </p>
+          <p className="mt-1 text-emerald-800">
+            Si dejas SMTP vacío, MatuMailer envía usando el <strong>Postfix local</strong> con tu
+            DKIM privado. Cualquier alias en tu dominio (info@, hola@, soporte@…) funciona sin
+            configurar nada más. Si defines SMTP propio (Gmail/Outlook/Zoho), esa configuración toma
+            precedencia.
+          </p>
+        </div>
+      )}
 
       {!isPremium && (
         <PlanLimitBanner
