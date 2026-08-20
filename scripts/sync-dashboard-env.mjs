@@ -103,11 +103,13 @@ writeFileSync(localPath, formatEnv(localVars), 'utf8');
 const prodVars = {
   ...merged,
   // ⚠️ NEXT_PUBLIC_API_URL debe apuntar a la API pública, NO al dashboard.
-  // Prioridad: NEXT_PUBLIC_API_URL del .env raíz → API_URL → fallback explícito.
+  // El fallback usa el mismo dominio del dashboard porque el nginx de
+  // matumailer.matubyte.com ya proxy /api/* al MatuMailer API (puerto 4001),
+  // evitando problemas de CORS y de DNS.
   NEXT_PUBLIC_API_URL:
     env.NEXT_PUBLIC_API_URL ||
     env.API_URL ||
-    'https://api.matucatalogo.com',
+    'https://matumailer.matubyte.com',
   NEXT_PUBLIC_APP_URL: env.APP_URL?.startsWith('https://')
     ? env.APP_URL
     : 'https://matumailer.matubyte.com',

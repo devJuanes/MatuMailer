@@ -1,4 +1,4 @@
-const FALLBACK_PROD_API_URL = 'https://api.matucatalogo.com';
+const FALLBACK_PROD_API_URL = 'https://matumailer.matubyte.com';
 
 function resolveApiBase(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL;
