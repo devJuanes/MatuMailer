@@ -26,7 +26,6 @@ function avatarFor(email: string) {
 }
 
 function sectionFor(ts: number): InboxEmail['section'] {
-  const now = Date.now();
   const startToday = new Date();
   startToday.setHours(0, 0, 0, 0);
   const startYesterday = new Date(startToday);
