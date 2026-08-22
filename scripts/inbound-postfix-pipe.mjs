@@ -11,6 +11,7 @@
  *   INBOUND_WEBHOOK_SECRET=...
  */
 import { stdin } from 'node:process';
+import { parseRawEmail } from './lib/parse-inbound-mime.mjs';
 
 const API_URL =
   process.env.INBOUND_API_URL || 'https://matumailer.matubyte.com/api/inbound/ingest';
@@ -44,7 +45,8 @@ async function main() {
   for await (const chunk of stdin) chunks.push(chunk);
   const raw = Buffer.concat(chunks).toString('utf8');
   const { headers, bodyStart, lines } = parseHeaders(raw);
-  const body = lines.slice(bodyStart).join('\n');
+  const bodyRaw = lines.slice(bodyStart).join('\n');
+  const { text, html } = parseRawEmail(raw);
 
   const to =
     ARG_RECIPIENT ||
@@ -68,14 +70,15 @@ async function main() {
     process.exit(75);
   }
 
-  const looksHtml = /<[a-z][\s\S]*>/i.test(body);
+  const looksHtml = Boolean(html?.trim());
   const payload = {
     to: toEmail,
     from,
     subject,
     messageId,
     headers,
-    ...(looksHtml ? { html: body } : { text: body }),
+    ...(looksHtml ? { html: html.trim() } : {}),
+    ...(text?.trim() ? { text: text.trim() } : !looksHtml && bodyRaw ? { text: bodyRaw } : {}),
   };
 
   const res = await fetch(API_URL, {
