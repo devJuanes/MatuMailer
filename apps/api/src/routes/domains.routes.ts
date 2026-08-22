@@ -16,6 +16,7 @@ import { domainsRepo, projectsRepo } from '@matumailer/database';
 import { z } from 'zod';
 import { encrypt } from '../lib/crypto.js';
 import { checkDomainDns } from '../lib/domain-dns.js';
+import { buildDomainDiagnostics } from '../lib/domain-diagnostics.js';
 import {
   domainStatusFromSummary,
   recordStatusFromCheck,
@@ -252,6 +253,49 @@ export async function domainsRoutes(app: FastifyInstance) {
         domain: publicDomain,
         refreshed: true,
         message: `Registros actualizados. Borra los DNS viejos (mx.*, feedback.*, _spf.matumailer.com) y publica estos. MX → ${MATUMAILER_MAIL_HOST}`,
+      };
+    },
+  );
+
+  server.get(
+    '/:id/diagnostics',
+    {
+      preHandler: [app.authenticate],
+      schema: { params: z.object({ id: z.string().uuid() }), tags: ['Domains'] },
+    },
+    async (request, reply) => {
+      const domain = await domainsRepo.findDomainById(request.params.id);
+      if (!domain) return reply.status(404).send({ error: 'Not Found' });
+      const project = await projectsRepo.findProjectById(domain.project_id);
+      if (!ensureProjectAccess(project, request.userId!)) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+      const diagnostics = await buildDomainDiagnostics(domain.id);
+      if (!diagnostics) return reply.status(404).send({ error: 'Not Found' });
+      return { diagnostics };
+    },
+  );
+
+  server.post(
+    '/:id/sync-inbound',
+    {
+      preHandler: [app.authenticate],
+      schema: { params: z.object({ id: z.string().uuid() }), tags: ['Domains'] },
+    },
+    async (request, reply) => {
+      const domain = await domainsRepo.findDomainById(request.params.id);
+      if (!domain) return reply.status(404).send({ error: 'Not Found' });
+      const project = await projectsRepo.findProjectById(domain.project_id);
+      if (!ensureProjectAccess(project, request.userId!)) {
+        return reply.status(404).send({ error: 'Not Found' });
+      }
+      schedulePostfixInboundSync('manual-sync-inbound');
+      const diagnostics = await buildDomainDiagnostics(domain.id);
+      return {
+        scheduled: true,
+        message:
+          'Sincronización Postfix programada. En el servidor ejecuta: sudo node scripts/sync-postfix-inbound.mjs',
+        diagnostics,
       };
     },
   );

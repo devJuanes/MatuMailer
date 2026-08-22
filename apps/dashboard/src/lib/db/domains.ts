@@ -79,6 +79,32 @@ export async function verifyDomain(domainId: string): Promise<DomainVerifyResult
   return api<DomainVerifyResult>(`/api/domains/${domainId}/verify`, { method: 'POST' });
 }
 
+export type DomainDiagnostics = {
+  domain: string;
+  domainId: string;
+  domainStatus: string;
+  receivingReady: boolean;
+  sendingReady: boolean;
+  inbound: {
+    likely550Cause: string | null;
+    explanation: string;
+  };
+  mailboxes: Array<{
+    email: string;
+    ready: boolean;
+    inPostfixMap: boolean | null;
+    reason?: string;
+  }>;
+  mx: {
+    records: Array<{ priority: number; host: string }>;
+    otherProviders: string[];
+  };
+};
+
+export async function getDomainDiagnostics(domainId: string): Promise<{ diagnostics: DomainDiagnostics }> {
+  return api(`/api/domains/${domainId}/diagnostics`);
+}
+
 export async function refreshDomainDns(domainId: string): Promise<{
   domain: DomainWithRecords;
   message?: string;

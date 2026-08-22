@@ -29,9 +29,11 @@ export function schedulePostfixInboundSync(reason = 'alias-change'): void {
     const child = spawn(process.execPath, [script], {
       cwd: root,
       env: process.env,
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
     });
+    child.stdout?.on('data', (d) => console.log('[postfix-inbound]', String(d).trim()));
+    child.stderr?.on('data', (d) => console.warn('[postfix-inbound]', String(d).trim()));
     child.unref();
     console.log(`[postfix-inbound] sync scheduled (${reason})`);
   }, 1500);
