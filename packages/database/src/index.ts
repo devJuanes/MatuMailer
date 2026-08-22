@@ -28,3 +28,4 @@ export * as emailEventsRepo from './repositories/email-events';
 export * as domainsRepo from './repositories/domains';
 export * as aliasesRepo from './repositories/aliases';
 export * as inboundMessagesRepo from './repositories/inbound-messages';
+export * as desktopReleasesRepo from './repositories/desktop-releases';

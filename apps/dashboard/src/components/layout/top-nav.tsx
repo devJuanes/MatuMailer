@@ -1,10 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Bell, BookOpen, Crown, LogOut, Menu } from 'lucide-react';
+import { Bell, BookOpen, Crown, Download, Loader2, LogOut, Menu } from 'lucide-react';
 import { AppLogo } from '@/components/brand/AppLogo';
-import { clearToken } from '@/lib/api';
+import { API_URL, clearToken, getToken } from '@/lib/api';
 import { signOut } from '@/lib/auth-matudb';
 import { usePlan } from '@/providers/plan-provider';
 import { Button } from '@/components/ui/button';
@@ -16,12 +17,46 @@ type TopNavProps = {
 export function TopNav({ onMenuClick }: TopNavProps) {
   const router = useRouter();
   const { isPremium, loading } = usePlan();
+  const [downloading, setDownloading] = useState(false);
 
   function logout() {
     void signOut().finally(() => {
       clearToken();
       router.push('/login');
     });
+  }
+
+  async function downloadWindowsApp() {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_URL}/api/desktop/download/windows/latest`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as {
+          message?: string;
+        };
+        throw new Error(err.message ?? `Error ${res.status}`);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const match = /filename="?([^";]+)"?/i.exec(disposition);
+      const fileName = match?.[1] ?? 'MatuMail-Windows.zip';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'No se pudo descargar el cliente Windows.');
+    } finally {
+      setDownloading(false);
+    }
   }
 
   return (
@@ -42,6 +77,22 @@ export function TopNav({ onMenuClick }: TopNavProps) {
         </div>
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={downloading}
+            onClick={() => void downloadWindowsApp()}
+            title="Descargar Matu Mail para Windows"
+          >
+            {downloading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">{downloading ? 'Descargando…' : 'Descargar'}</span>
+          </Button>
           {!loading && !isPremium && (
             <Link href="/dashboard/premium">
               <Button size="sm" className="hidden gap-1.5 sm:inline-flex">

@@ -144,6 +144,7 @@ if [[ "$DO_MIGRATE" -eq 1 ]]; then
     node packages/database/scripts/apply-messaging-upgrade.mjs || true
   fi
   npm run db:migrate:inbound --workspace=@matumailer/database || true
+  npm run db:migrate:desktop-releases --workspace=@matumailer/database || true
   ok "Migraciones intentadas"
 else
   log "Omitiendo migraciones (--no-migrate)"

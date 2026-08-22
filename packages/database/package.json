@@ -19,6 +19,7 @@
     "db:migrate:subscriptions": "tsx src/migrate-subscriptions.ts",
     "db:migrate:pending-signups": "tsx src/migrate-pending-signups.ts",
     "db:migrate:inbound": "tsx src/migrate-inbound.ts",
+    "db:migrate:desktop-releases": "tsx src/migrate-desktop-releases.ts",
     "lint": "eslint src"
   },
   "dependencies": {

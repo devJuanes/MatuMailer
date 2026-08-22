@@ -20,6 +20,7 @@ import { matudbProxyRoutes } from './routes/matudb-proxy.routes.js';
 import { aliasesRoutes } from './routes/aliases.routes.js';
 import { sendingIdentitiesRoutes } from './routes/sending-identities.routes.js';
 import { inboundRoutes } from './routes/inbound.routes.js';
+import { desktopRoutes } from './routes/desktop.routes.js';
 import { startScheduleWorker } from './services/schedule.service.js';
 import { getMatuOps, reportMatuOpsError, startMatuOps, stopMatuOps } from './lib/matuops.js';
 
@@ -89,6 +90,7 @@ async function buildServer() {
   await app.register(aliasesRoutes, { prefix: '/api/aliases' });
   await app.register(sendingIdentitiesRoutes, { prefix: '/api/sending-identities' });
   await app.register(inboundRoutes, { prefix: '/api/inbound' });
+  await app.register(desktopRoutes, { prefix: '/api/desktop' });
   // Proxy transparente a MatuDB para evitar CORS en el dashboard.
   await app.register(matudbProxyRoutes);
   await app.register(trackingRoutes);
