@@ -31,17 +31,19 @@ const mailer = new MatuMailer({
   baseUrl: '${apiUrl}',
 });
 
-await mailer.sendTemplate(
-  'cliente@ejemplo.com',
-  '${slug}',
-  ${dataExample.replace(/\n/g, '\n  ')},
-);`;
+await mailer.send({
+  to: 'cliente@ejemplo.com',
+  from: 'soporte@tudominio.com', // alias registrado en el dashboard
+  template: '${slug}',
+  data: ${dataExample.replace(/\n/g, '\n  ')},
+});`;
 
   const curlSnippet = `curl -X POST ${apiUrl}/api/emails/send \\
   -H "Authorization: Bearer TU_TOKEN_API" \\
   -H "Content-Type: application/json" \\
   -d '{
     "to": "cliente@ejemplo.com",
+    "from": "soporte@tudominio.com",
     "template": "${slug}",
     "data": ${dataExample.replace(/\n/g, '')}
   }'`;

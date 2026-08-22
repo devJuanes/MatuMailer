@@ -52,7 +52,11 @@ const endpoints = [
   { method: 'POST', path: '/api/auth/register', desc: 'Registro MatuDB Auth' },
   { method: 'POST', path: '/api/auth/login', desc: 'Inicio de sesión' },
   { method: 'GET', path: '/api/projects', desc: 'Listar proyectos (sesión dashboard)' },
-  { method: 'GET', path: '/api/sending-identities', desc: 'Aliases listos para enviar (token API)' },
+  {
+    method: 'GET',
+    path: '/api/sending-identities',
+    desc: 'Aliases listos para enviar (token API)',
+  },
   {
     method: 'GET',
     path: '/api/sending-identities/:id',
@@ -100,7 +104,12 @@ export default function DocsPage() {
         <CardContent className="space-y-2 text-sm text-charcoal/80">
           <ol className="list-decimal space-y-1 pl-5">
             <li>
-              Verifica un <strong>dominio por DNS</strong> y crea al menos un <strong>alias</strong>.
+              Verifica un <strong>dominio por DNS</strong> (SPF + DKIM para envío) y crea al menos
+              un <strong>alias activo</strong> (ej. <code>soporte@tudominio.com</code>).
+            </li>
+            <li>
+              El <code>from</code> en API/SDK debe ser un <strong>alias registrado</strong>, no
+              cualquier correo del dominio.
             </li>
             <li>
               Crea un <strong>token de API</strong> (empieza por{' '}
@@ -108,14 +117,47 @@ export default function DocsPage() {
               ). No uses tu contraseña de login.
             </li>
             <li>
-              Autentica todas las llamadas con{' '}
-              <code className="rounded bg-white/80 px-1">Authorization: Bearer mm_live_...</code>
+              Autentica con{' '}
+              <code className="rounded bg-white/80 px-1">Authorization: Bearer mm_live_...</code>—
+              el proyecto se toma del token (no hace falta <code>projectId</code> en send).
             </li>
             <li>
-              El proyecto se toma del token: no hace falta pasar <code>projectId</code> en send /
-              templates API.
+              (Opcional recepción) MX del dominio → <code>matumailer.matubyte.com</code> + alias en
+              bandeja (<code>mail.matubyte.com</code>).
             </li>
           </ol>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6 border-charcoal/10">
+        <CardHeader>
+          <CardTitle>Aliases e identidades de envío</CardTitle>
+          <CardDescription>
+            Lista identidades listas para enviar y usa <code>from</code> o <code>aliasId</code> en
+            cada envío
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <pre className="overflow-x-auto rounded-2xl bg-charcoal/5 p-5 font-mono text-xs leading-relaxed text-charcoal/80 sm:text-sm">
+            {`// SDK — identidades disponibles
+const { identities } = await mail.sendingIdentities.list();
+
+await mail.send({
+  to: 'cliente@ejemplo.com',
+  from: 'agenda@grupohuacas.com',
+  fromName: 'Agenda',
+  subject: 'Confirmación',
+  html: '<p>Tu cita está confirmada.</p>',
+});
+
+// cURL — listar identidades
+curl ${apiUrl}/api/sending-identities \\
+  -H "Authorization: Bearer mm_live_TU_TOKEN"`}
+          </pre>
+          <p className="text-sm text-muted-foreground">
+            Crear o editar aliases: Dashboard → Aliases (requiere sesión). Con <code>mm_live_</code>{' '}
+            solo puedes listar y enviar.
+          </p>
         </CardContent>
       </Card>
 
@@ -245,6 +287,7 @@ val request = Request.Builder()
   -H "Content-Type: application/json" \\
   -d '{
     "to": "usuario@ejemplo.com",
+    "from": "soporte@tudominio.com",
     "subject": "Confirmación",
     "html": "<h1>Gracias</h1><p>Pedido #1234</p>"
   }'`}
@@ -319,6 +362,7 @@ const mail = new MatuMailer({
 
 await mail.send({
   to: 'usuario@ejemplo.com',
+  from: 'soporte@tudominio.com',
   subject: 'Confirmación de pedido',
   html: '<h1>Gracias</h1><p>Tu pedido #1234 está confirmado.</p>',
   text: 'Gracias. Pedido #1234 confirmado.', // opcional
@@ -429,8 +473,18 @@ MATUMAILER_API_URL=${apiUrl}`}
         <CardContent>
           <ul className="list-disc space-y-1 pl-5 text-sm text-charcoal/80">
             <li>
-              <code>NO_VERIFIED_DOMAIN</code> / <code>NO_DEFAULT_SENDING_IDENTITY</code> — verifica
-              el dominio, crea aliases y marca un remitente predeterminado.
+              <code>NO_DEFAULT_SENDING_IDENTITY</code> — varios aliases sin default: pasa{' '}
+              <code>from</code> o <code>aliasId</code>.
+            </li>
+            <li>
+              <code>SENDING_IDENTITY_NOT_FOUND</code> — el <code>from</code> no es un alias
+              registrado. Créalo en Aliases.
+            </li>
+            <li>
+              <code>SENDING_IDENTITY_DISABLED</code> — alias desactivado en el dashboard.
+            </li>
+            <li>
+              <code>DOMAIN_NOT_VERIFIED</code> — dominio sin SPF/DKIM OK. Re-verifica en Dominios.
             </li>
             <li>
               <code>TEMPLATE_NOT_FOUND</code> — slug incorrecto o plantilla de otro proyecto.
@@ -440,7 +494,7 @@ MATUMAILER_API_URL=${apiUrl}`}
               el JWT de login.
             </li>
             <li>
-              <code>SLUG_EXISTS</code> — ya hay una plantilla con ese slug en el proyecto.
+              <code>402</code> — límite de plan (envíos o bulk).
             </li>
           </ul>
         </CardContent>

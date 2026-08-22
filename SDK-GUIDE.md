@@ -1,25 +1,33 @@
 # Guía del SDK `matumailer` — paso a paso
 
-Documentación para integrar MatuMailer en tu código (Node.js, Next.js, scripts, etc.).
+Documentación para integrar MatuMailer en tu código (Node.js, Next.js, scripts, Android, cURL, etc.).
 
-- **API en producción:** `https://api.matucatalogo.com`
-- **Dashboard:** `https://mail.matucatalogo.com`
+| Entorno                   | URL base de la API                | Dashboard / bandeja                                                         |
+| ------------------------- | --------------------------------- | --------------------------------------------------------------------------- |
+| **MatuByte (producción)** | `https://matumailer.matubyte.com` | App: `https://matumailer.matubyte.com` · Inbox: `https://mail.matubyte.com` |
+| **MatuCatalogo**          | `https://api.matucatalogo.com`    | `https://mail.matucatalogo.com`                                             |
+| **Local**                 | `http://localhost:4001`           | `http://localhost:3000`                                                     |
+
+Swagger interactivo: `{BASE_URL}/docs` (ej. `https://matumailer.matubyte.com/docs`).
+
 - **Paquete npm:** `matumailer`
 
 ---
 
 ## 1. Qué necesitas antes de programar
 
-| Requisito                         | Dónde se configura                      | Por qué                                                              |
-| --------------------------------- | --------------------------------------- | -------------------------------------------------------------------- |
-| Cuenta MatuMailer                 | Dashboard → registro                    | Identidad y proyectos                                                |
-| Un **proyecto**                   | Dashboard → Proyectos                   | Aísla dominios, aliases, tokens y envíos                             |
-| **Dominio verificado por DNS**    | Dashboard → Dominios                    | Identidad de envío (SPF/DKIM/DMARC)                                  |
-| **Alias** (identidad de envío)    | Dashboard → Aliases                     | `from` autorizado, p. ej. `soporte@tudominio.com`                    |
-| **Token de API**                  | Dashboard → proyecto → Tokens API       | Autenticación en `Authorization: Bearer mm_live_...`                 |
-| (Opcional) **Plantillas**         | Dashboard → Plantillas o Creador visual | Solo si envías con `template: 'slug'`                                |
+| Requisito                      | Dónde se configura                   | Por qué                                                    |
+| ------------------------------ | ------------------------------------ | ---------------------------------------------------------- |
+| Cuenta MatuMailer              | Dashboard → registro                 | Identidad y proyectos                                      |
+| Un **proyecto**                | Dashboard → Proyectos                | Aísla dominios, aliases, tokens y envíos                   |
+| **Dominio verificado (envío)** | Dashboard → Dominios → Verificar DNS | SPF + DKIM deben pasar para enviar                         |
+| **Alias activo**               | Dashboard → Aliases                  | Es el único `from` permitido (ej. `soporte@tudominio.com`) |
+| **Token de API**               | Dashboard → proyecto → Tokens API    | `Authorization: Bearer mm_live_...`                        |
+| (Opcional) **Plantillas**      | Dashboard → Plantillas               | Solo si envías con `template: 'slug'`                      |
 
-El token **no** es tu contraseña de login: es un secreto de proyecto que empieza por `mm_live_`.
+> **Importante:** no puedes poner cualquier dirección `@tudominio.com` en `from`. Debe ser un **alias registrado y activo** en el dashboard. Si el alias no existe o está desactivado, la API responde con un error de identidad de envío.
+
+El token **no** es tu contraseña de login. Es un secreto de proyecto (`mm_live_...` en producción, `mm_test_...` en pruebas si lo generas).
 
 ---
 
@@ -29,18 +37,18 @@ El token **no** es tu contraseña de login: es un secreto de proyecto que empiez
 npm install matumailer
 ```
 
-En TypeScript no hace falta instalar tipos aparte: vienen en el paquete.
+En TypeScript los tipos vienen incluidos en el paquete.
 
 ---
 
-## 3. Configuración en tu proyecto
+## 3. Configuración
 
 ### Variables de entorno (recomendado)
 
 ```env
 MATUMAILER_TOKEN=mm_live_xxxxxxxxxxxxxxxxxxxxxxxx
-# Opcional si usas otra URL (por defecto: api.matucatalogo.com)
-MATUMAILER_API_URL=https://api.matucatalogo.com
+# URL base — debe coincidir con tu despliegue (sin /api al final)
+MATUMAILER_API_URL=https://matumailer.matubyte.com
 ```
 
 ### Código
@@ -50,248 +58,276 @@ import { MatuMailer } from 'matumailer';
 
 const mail = new MatuMailer({
   token: process.env.MATUMAILER_TOKEN,
-  baseUrl: process.env.MATUMAILER_API_URL, // opcional
+  baseUrl: process.env.MATUMAILER_API_URL, // opcional; default npm: api.matucatalogo.com
 });
 ```
 
-Si no pasas `token`, el SDK lee `MATUMAILER_TOKEN`. Si falta, lanza error `MISSING_TOKEN`.
+Si no pasas `token`, el SDK lee `MATUMAILER_TOKEN`. Si falta, lanza `MISSING_TOKEN`.
 
 ---
 
-## 4. Enviar correo libre (HTML / texto propio)
+## 4. Autenticación por endpoint
 
-No usas plantilla del dashboard: mandas el contenido en el request.
+| Operación                               | Token `mm_live_` / `mm_test_` | JWT de login (dashboard)                       |
+| --------------------------------------- | ----------------------------- | ---------------------------------------------- |
+| `POST /api/emails/send` (+ bulk, group) | ✓                             | ✓ (con `projectId` si tienes varios proyectos) |
+| `GET /api/templates`, CRUD plantillas   | ✓                             | ✓                                              |
+| `GET /api/sending-identities`           | ✓                             | ✓                                              |
+| `GET /api/domains`, `GET /api/aliases`  | ✓                             | ✓                                              |
+| `POST/PATCH/DELETE` dominios y aliases  | ✗                             | ✓ (sesión dashboard)                           |
+| Verificar DNS, sync inbound             | ✗                             | ✓                                              |
+
+**Desde backend con SDK:** usa siempre el token `mm_live_...` para enviar. Crea dominios y aliases en el **dashboard** (o con JWT en tu propio backend autenticado).
+
+Header en todas las llamadas:
+
+```http
+Authorization: Bearer mm_live_TU_TOKEN
+Content-Type: application/json
+```
+
+---
+
+## 5. Aliases e identidades de envío
+
+Un **alias** es la identidad visible del remitente (`From`). Ejemplos: `agenda@grupohuacas.com`, `soporte@tudominio.com`.
+
+### Cómo elige la API el remitente
+
+Si no pasas `from`, el orden de resolución es:
+
+1. `aliasId` explícito
+2. `from` (email completo del alias)
+3. `domainId` + alias default de ese dominio
+4. `default_alias_id` del proyecto
+5. Un único alias activo en el proyecto
+6. Error `NO_DEFAULT_SENDING_IDENTITY`
+
+### Listar identidades listas para enviar (recomendado)
+
+```ts
+const { identities, defaultSendingIdentityId } = await mail.sendingIdentities.list();
+
+console.log(
+  identities.map((i) => ({
+    email: i.email,
+    displayName: i.displayName,
+    isDefault: i.isDefault,
+  })),
+);
+```
+
+### Enviar con alias explícito
+
+```ts
+await mail.send({
+  to: 'cliente@ejemplo.com',
+  from: 'agenda@grupohuacas.com',
+  fromName: 'Agenda Grupo Huacas', // opcional; si no, usa displayName del alias
+  subject: 'Confirmación de cita',
+  html: '<p>Tu cita está confirmada.</p>',
+});
+```
+
+### Enviar con `aliasId` (UUID)
+
+```ts
+await mail.send({
+  to: 'cliente@ejemplo.com',
+  aliasId: 'uuid-del-alias',
+  subject: 'Hola',
+  html: '<p>...</p>',
+});
+```
+
+### Enviar sin `from` (un solo alias o default)
 
 ```ts
 await mail.send({
   to: 'cliente@ejemplo.com',
   subject: 'Pedido confirmado',
-  html: '<h1>Gracias por tu compra</h1><p>Pedido #1234</p>',
-  text: 'Gracias por tu compra. Pedido #1234', // opcional, versión texto plano
+  html: '<h1>Gracias</h1>',
 });
 ```
 
-### Varios destinatarios
+### Varios dominios en el mismo proyecto
+
+```ts
+await mail.send({
+  to: 'user@gmail.com',
+  domainId: 'uuid-del-dominio',
+  subject: 'Aviso',
+  html: '<p>...</p>',
+});
+```
+
+### Gestionar aliases (dashboard o JWT)
+
+```ts
+// Solo lectura con mm_live_:
+const { aliases } = await mail.listAliases(projectId, { activeOnly: true });
+
+// Crear/editar/eliminar → requiere sesión JWT (dashboard), no mm_live_:
+// Dashboard → Aliases → Crear alias
+```
+
+### Reglas de aliases
+
+- **`localPart`:** solo `a-z`, `0-9`, `.`, `_`, `+`, `-`
+- **Un `isDefault` por dominio** (el primero puede marcarse automáticamente)
+- **`displayName`:** nombre visible en Gmail/Outlook
+- **`replyTo`:** si no lo pasas en `send()`, se usa el del alias
+- Alias **inactivo** → `SENDING_IDENTITY_DISABLED`
+- Email en `from` que no existe → `SENDING_IDENTITY_NOT_FOUND`
+
+---
+
+## 6. Enviar correo libre (HTML / texto)
+
+```ts
+await mail.send({
+  to: 'cliente@ejemplo.com',
+  from: 'soporte@tudominio.com',
+  subject: 'Pedido confirmado',
+  html: '<h1>Gracias por tu compra</h1>',
+  text: 'Gracias por tu compra.', // opcional
+  replyTo: 'ventas@tudominio.com', // opcional
+  cc: 'copia@ejemplo.com',
+  tags: [{ name: 'tipo', value: 'transaccional' }],
+});
+```
+
+### Varios destinatarios en `/send`
 
 ```ts
 await mail.send({
   to: ['a@ejemplo.com', 'b@ejemplo.com'],
   subject: 'Aviso',
-  html: '<p>Mensaje para el equipo</p>',
+  html: '<p>Mensaje</p>',
 });
 ```
 
-### Reglas de la API
+Cada destinatario recibe su propio correo (no se ven entre sí). Aplica límites de plan bulk.
 
-- Debes enviar al menos uno: `subject`, `html` o `template`.
-- Para correo libre: incluye `subject` + `html` (o `text`).
+### Reglas del body
+
+- Al menos uno de: `subject`, `html` o `template`
+- Correo libre: incluye `subject` + `html` (o `text`)
 
 ---
 
-## 4.5 Dominios personalizados (estilo Resend)
+## 7. Dominios personalizados (envío)
 
-Una vez tu dominio está verificado y tienes DKIM, puedes enviar desde cualquier dirección `@tudominio.com`:
+1. **Dashboard → Dominios → Añadir dominio** (o SDK con JWT)
+2. Publica los registros DNS (SPF, DKIM, DMARC; MX/return-path si también quieres **recibir**)
+3. **Verificar DNS** en el dashboard hasta que **Envío** (SPF + DKIM) esté OK
+4. **Crea al menos un alias** activo en ese dominio
+5. Envía con `from: 'alias@tudominio.com'`
 
-```ts
-await mail.send({
-  to: 'cliente@ejemplo.com',
-  from: 'support@destin.com',
-  fromName: 'Soporte Destin',
-  replyTo: 'hola@destin.com',
-  subject: 'Hola {{name}}',
-  html: '<p>Hola {{name}}</p>',
-  data: { name: 'Juan' },
-});
-```
+MatuMailer firma **DKIM** automáticamente con la clave del dominio verificado.
 
-### Flujo completo desde el SDK
+### Envío vs recepción
 
-```ts
-// 1. Listar / crear dominios
-const { domains } = await mail.listDomains(projectId);
+| Capacidad     | Requisito DNS                                                | Uso                            |
+| ------------- | ------------------------------------------------------------ | ------------------------------ |
+| **Envío**     | SPF + DKIM verificados                                       | API/SDK `send`                 |
+| **Recepción** | MX → `matumailer.matubyte.com` + alias activo + sync Postfix | Bandeja en `mail.matubyte.com` |
 
-const { domain } = await mail.createDomain(projectId, {
-  domain: 'destin.com',
-  region: 'sa-east-1', // us-east-1 | sa-east-1 | eu-west-1
-});
-
-// 2. Publica los registros DNS que te imprime la consola / dashboard
-console.log(domain.records);
-
-// 3. Verifica cuando estén propagados
-const result = await mail.verifyDomain(domain.id);
-if (!result.verified) {
-  console.warn('Faltan:', result.missing);
-}
-
-// 4. Marca como default (opcional)
-await mail.setDefaultDomain(domain.id);
-```
-
-Cuando el `from` pertenezca a un dominio verificado, MatuMailer firma DKIM automáticamente con la
-clave privada RSA 2048 que se generó al añadir el dominio.
+Puedes enviar sin recibir (solo SPF/DKIM). Para recibir correos entrantes necesitas MX correcto y el alias creado en el dashboard.
 
 ---
 
-## 4.6 Aliases (`info@`, `support@`, `sales@`, ...)
+## 8. Plantillas del dashboard
 
-Por cada dominio verificado puedes crear aliases ilimitados. El alias es la identidad
-visible que aparece como `From` en el cliente del destinatario. Cualquier alias activo puede
-usarse como `from` en una llamada de envío.
+### Crear plantilla
 
-```ts
-// Crear
-const { alias } = await mail.createAlias(projectId, {
-  domainId: 'uuid-del-dominio',
-  localPart: 'support', // genera support@destin.com
-  displayName: 'Soporte Destin', // nombre visible
-  isDefault: true, // marca como default del dominio
-});
+Dashboard → Plantillas. Variables: `{{nombre}}`, `{{codigo}}`, etc. Anota el **slug** (ej. `bienvenida`).
 
-// Listar (con filtros opcionales)
-const { aliases } = await mail.listAliases(projectId, {
-  domainId: 'uuid-del-dominio', // opcional: filtrar por dominio
-  activeOnly: true, // opcional: solo activos
-});
-
-// Editar
-await mail.updateAlias(alias.id, {
-  isActive: false,
-  displayName: 'Soporte (fuera de horario)',
-});
-
-// Eliminar
-await mail.deleteAlias(alias.id);
-```
-
-### Reglas
-
-- **`localPart`** solo acepta `a-z`, `0-9`, `.`, `_`, `+`, `-` (RFC 5321 permisivo).
-- **Un único `default = true` por dominio** (índice único parcial). El primero que crees
-  se marca automáticamente como default si no hay otro.
-- **`displayName`** aparece como el nombre del remitente en Gmail/Outlook.
-- **`replyTo`** por defecto del alias: si no lo pasas en el `mail.send()`, el server usa este.
-- Si llamas a `mail.send({ from: 'support@destin.com' })` y ese alias está `isActive: false`,
-  el server rechaza con `FROM_NOT_ALIAS_OF_VERIFIED_DOMAIN`.
-
-### Enviar con alias por defecto
-
-Si el proyecto tiene un único dominio verificado con su alias default, basta con:
+### Enviar
 
 ```ts
-await mail.send({
-  to: 'user@gmail.com',
-  subject: 'Hola',
-  html: '<p>...</p>',
-  // No pasamos `from` → el server elige el alias default del proyecto.
+await mail.sendTemplate('usuario@ejemplo.com', 'bienvenida', {
+  nombre: 'Ana',
+  codigo: '48291',
 });
-```
 
-### Proyectos con múltiples dominios
-
-Si el proyecto tiene `destin.com` y `otro.com` verificados, fuerza cuál usar con `domainId`:
-
-```ts
-await mail.send({
-  to: 'user@gmail.com',
-  domainId: 'uuid-de-otro-com',
-  subject: '...',
-  html: '...',
-});
-// O, equivalentemente, pasando un `from` concreto:
-await mail.send({
-  to: 'user@gmail.com',
-  from: 'info@otro.com',
-  subject: '...',
-  html: '...',
-});
-```
-
----
-
-### Paso A — Crear la plantilla
-
-1. Entra al dashboard → tu proyecto → **Plantillas** (o **Creador**).
-2. Define **asunto** y **HTML** con variables en formato `{{nombreVariable}}`, por ejemplo:
-
-   ```html
-   <p>Hola {{nombre}}, tu código es {{codigo}}</p>
-   ```
-
-3. Guarda y anota el **slug** de la plantilla (ej. `bienvenida`, `reset-password`). Ese slug es el que usas en código.
-
-### Paso B — Enviar desde código
-
-**Opción 1 — `sendTemplate` (atajo)**
-
-```ts
-await mail.sendTemplate(
-  'usuario@ejemplo.com',
-  'bienvenida', // slug de la plantilla
-  {
-    nombre: 'Ana',
-    codigo: '48291',
-  },
-  'Bienvenida a MatuMailer', // subject opcional (si no, usa el de la plantilla)
-);
-```
-
-**Opción 2 — `send` (mismo endpoint)**
-
-```ts
+// Equivalente
 await mail.send({
   to: 'usuario@ejemplo.com',
+  from: 'soporte@tudominio.com',
   template: 'bienvenida',
-  data: {
-    nombre: 'Ana',
-    codigo: '48291',
-  },
+  data: { nombre: 'Ana', codigo: '48291' },
 });
 ```
 
-### Variables
+---
 
-- Sintaxis en la plantilla: `{{variable}}` (solo letras, números y `_` en el nombre).
-- En `data` pasas un objeto clave → valor. Si falta una clave, se reemplaza por cadena vacía.
-- El **asunto** de la plantilla también puede llevar `{{variables}}`.
+## 9. Envío masivo y grupos
 
-### Dónde ver ejemplos por plantilla
+### Bulk (plantilla obligatoria)
 
-En el dashboard, al editar una plantilla, el bloque **“Cómo usar esta plantilla”** genera snippets con tu slug y variables reales (SDK, cURL).
+```ts
+await mail.sendBulk({
+  template: 'campana',
+  from: 'info@tudominio.com',
+  recipients: [
+    { email: 'a@x.com', data: { nombre: 'Ana' } },
+    { email: 'b@x.com', data: { nombre: 'Luis' } },
+  ],
+});
+```
+
+### Grupo de contactos
+
+```ts
+await mail.sendToGroup({
+  groupId: 'uuid-del-grupo',
+  template: 'campana',
+  from: 'info@tudominio.com',
+  data: { titulo: 'Novedades', mensaje: '…' },
+});
+```
 
 ---
 
-## 6. Programar envío para más tarde
-
-Pasa `scheduledAt` en ISO 8601 (UTC recomendado):
+## 10. Envío programado
 
 ```ts
 await mail.send({
   to: 'cliente@ejemplo.com',
+  from: 'soporte@tudominio.com',
   template: 'recordatorio',
   data: { nombre: 'Luis' },
   scheduledAt: '2026-05-25T15:00:00.000Z',
 });
 ```
 
-La API responde con `scheduled: true` y un `id` del envío programado. Un worker en el servidor lo envía cuando llega la hora.
+Respuesta: `{ success: true, scheduled: true, id, status: "pending", scheduledAt }`.
 
 ---
 
-## 7. Ejemplo completo (Next.js API Route)
+## 11. Ejemplo Next.js (API Route)
 
 ```ts
 // app/api/notificar/route.ts
 import { MatuMailer } from 'matumailer';
 import { NextResponse } from 'next/server';
 
-const mail = new MatuMailer({ token: process.env.MATUMAILER_TOKEN! });
+const mail = new MatuMailer({
+  token: process.env.MATUMAILER_TOKEN!,
+  baseUrl: process.env.MATUMAILER_API_URL,
+});
 
 export async function POST(req: Request) {
   const { email, nombre } = await req.json();
 
   try {
-    const result = await mail.sendTemplate(email, 'bienvenida', { nombre });
+    const result = await mail.send({
+      to: email,
+      from: 'soporte@tudominio.com',
+      template: 'bienvenida',
+      data: { nombre },
+    });
     return NextResponse.json(result);
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Error al enviar';
@@ -300,76 +336,70 @@ export async function POST(req: Request) {
 }
 ```
 
-**Importante:** el token solo en el servidor (`.env`), nunca en el navegador del usuario final.
+**Nunca** expongas `mm_live_...` en el navegador del usuario.
 
 ---
 
-## 8. Ejemplo con fetch (sin SDK)
+## 12. cURL (sin SDK)
 
 ```bash
-curl -X POST https://api.matucatalogo.com/api/emails/send \
-  -H "Authorization: Bearer mm_live_TU_TOKEN" \
+API=https://matumailer.matubyte.com
+TOKEN=mm_live_TU_TOKEN
+
+# Con plantilla
+curl -X POST "$API/api/emails/send" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "cliente@ejemplo.com",
+    "from": "agenda@grupohuacas.com",
     "template": "bienvenida",
     "data": { "nombre": "Ana" }
   }'
-```
 
-Correo libre:
-
-```bash
-curl -X POST https://api.matucatalogo.com/api/emails/send \
-  -H "Authorization: Bearer mm_live_TU_TOKEN" \
+# Correo libre
+curl -X POST "$API/api/emails/send" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "cliente@ejemplo.com",
+    "from": "soporte@tudominio.com",
     "subject": "Hola",
     "html": "<p>Mensaje libre</p>"
   }'
+
+# Listar identidades de envío
+curl "$API/api/sending-identities" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
 
-## 8b. Android / Kotlin (sin SDK npm)
+## 13. Android / Kotlin (OkHttp)
 
-Desde Android llama a la API REST con OkHttp (o Retrofit). Base URL: la misma que `MATUMAILER_API_URL` / dashboard (`NEXT_PUBLIC_API_URL`).
+Usa la misma URL base y el token en `Authorization: Bearer`.
 
 ```kotlin
-val client = OkHttpClient()
-val json = JSONObject()
+val apiUrl = "https://matumailer.matubyte.com"
+val body = JSONObject()
   .put("to", "cliente@ejemplo.com")
-  .put("template", "bienvenida")
-  .put("data", JSONObject().put("nombre", "Ana"))
-  .toString()
-  .toRequestBody("application/json".toMediaType())
+  .put("from", "agenda@grupohuacas.com")
+  .put("subject", "Hola")
+  .put("html", "<p>Mensaje</p>")
 
 val request = Request.Builder()
-  .url("https://matumailer.matubyte.com/api/emails/send")
+  .url("$apiUrl/api/emails/send")
   .addHeader("Authorization", "Bearer mm_live_TU_TOKEN")
-  .post(json)
+  .addHeader("Content-Type", "application/json")
+  .post(body.toString().toRequestBody("application/json".toMediaType()))
   .build()
-
-client.newCall(request).execute()
 ```
 
-**Plantillas vía API** (también con token `mm_live_...`):
-
-| Método | Ruta                        | Uso                                                           |
-| ------ | --------------------------- | ------------------------------------------------------------- |
-| GET    | `/api/templates`            | Listar                                                        |
-| GET    | `/api/templates/slug/:slug` | Obtener una                                                   |
-| POST   | `/api/templates`            | Crear (`slug`, `name`, `subject`, `htmlContent`, `variables`) |
-| PATCH  | `/api/templates/id/:id`     | Actualizar                                                    |
-| DELETE | `/api/templates/id/:id`     | Eliminar                                                      |
-| POST   | `/api/emails/send/bulk`     | Masivo (1 correo por destinatario)                            |
-
-Más ejemplos en el dashboard → **Documentación**.
+Preferible que tu **backend** proxyee el token; no lo embebas en la APK.
 
 ---
 
-## 9. Respuestas y errores frecuentes
+## 14. Respuestas y errores
 
 ### Éxito (envío inmediato)
 
@@ -378,36 +408,45 @@ Más ejemplos en el dashboard → **Documentación**.
   "success": true,
   "scheduled": false,
   "id": "uuid-del-log",
-  "status": "sent"
+  "status": "sent",
+  "from": "agenda@grupohuacas.com",
+  "aliasId": "uuid-alias",
+  "domainId": "uuid-dominio"
 }
 ```
 
 ### Errores habituales
 
-| Código / mensaje      | Causa                               | Qué hacer                       |
-| --------------------- | ----------------------------------- | ------------------------------- |
-| `NO_VERIFIED_DOMAIN` / `DOMAIN_NOT_VERIFIED` | Dominio sin DNS listo            | Verifica SPF/DKIM en Dominios   |
-| `NO_DEFAULT_SENDING_IDENTITY` | Varios aliases y ninguno default | Indica `from` o marca predeterminado |
-| `SENDING_IDENTITY_NOT_ALLOWED` | Alias de otro proyecto           | Usa un alias de **este** proyecto |
-| `TEMPLATE_NOT_FOUND`  | Slug incorrecto o de otro proyecto  | Revisa el slug en Plantillas    |
-| `401`                 | Token inválido o revocado           | Genera un token nuevo           |
-| `MISSING_TOKEN` (SDK) | Falta token en constructor o `.env` | Define `MATUMAILER_TOKEN`       |
+| Código                         | Causa                                        | Qué hacer                                         |
+| ------------------------------ | -------------------------------------------- | ------------------------------------------------- |
+| `NO_DEFAULT_SENDING_IDENTITY`  | Varios aliases, ninguno default y sin `from` | Pasa `from` o `aliasId`, o marca un alias default |
+| `SENDING_IDENTITY_NOT_FOUND`   | `from` no es un alias registrado             | Créalo en Dashboard → Aliases                     |
+| `SENDING_IDENTITY_DISABLED`    | Alias desactivado                            | Actívalo en Aliases                               |
+| `SENDING_IDENTITY_NOT_ALLOWED` | Alias de otro proyecto                       | Usa token del proyecto correcto                   |
+| `DOMAIN_NOT_VERIFIED`          | Dominio sin SPF/DKIM OK                      | Verifica DNS en Dominios                          |
+| `NO_VERIFIED_DOMAIN`           | Sin dominios listos para enviar              | Añade y verifica un dominio                       |
+| `TEMPLATE_NOT_FOUND`           | Slug incorrecto                              | Revisa Plantillas                                 |
+| `401`                          | Token inválido                               | Genera token nuevo                                |
+| `402`                          | Límite de plan                               | Upgrade o espera reset                            |
+| `MISSING_TOKEN` (SDK)          | Sin token en config/env                      | Define `MATUMAILER_TOKEN`                         |
 
 ---
 
-## 10. Checklist rápido
+## 15. Checklist rápido
 
-1. [ ] Dominio verificado por DNS y al menos un **alias** activo
-2. [ ] Token API copiado (`mm_live_...`)
-3. [ ] `npm install matumailer`
-4. [ ] `.env` con `MATUMAILER_TOKEN`
-5. [ ] Prueba correo **libre** con `html` + `subject`
-6. [ ] (Opcional) Plantilla creada → envío con `template` + `data`
+1. [ ] Dominio con **SPF + DKIM** verificados (badge Envío en Dominios)
+2. [ ] Al menos un **alias activo** (`agenda@`, `soporte@`, etc.)
+3. [ ] Token `mm_live_...` generado
+4. [ ] `MATUMAILER_API_URL` apunta a tu API (`https://matumailer.matubyte.com` en MatuByte)
+5. [ ] Prueba: `sendingIdentities.list()` o envío con `from` explícito
+6. [ ] (Opcional recepción) MX → `matumailer.matubyte.com` + alias en bandeja
 
 ---
 
-## 11. Más referencia
+## 16. Más referencia
 
-- Swagger interactivo: `https://api.matucatalogo.com/docs`
-- Publicar el paquete en npm: [NPM-PUBLISH.md](./NPM-PUBLISH.md)
-- Despliegue del servidor: [DEPLOY-SERVIDOR.md](./DEPLOY-SERVIDOR.md)
+- Documentación en el dashboard → **Documentación**
+- Swagger: `{BASE_URL}/docs`
+- [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [DEPLOY-SERVIDOR.md](./DEPLOY-SERVIDOR.md)
+- [NPM-PUBLISH.md](./NPM-PUBLISH.md)
