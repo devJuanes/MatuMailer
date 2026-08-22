@@ -10,8 +10,13 @@ import { fileURLToPath } from 'node:url';
 let pending: ReturnType<typeof setTimeout> | null = null;
 
 function repoRoot(): string {
+  const fromEnv = process.env.APP_DIR?.trim();
+  if (fromEnv) return fromEnv;
+  // PM2 cwd is the repo root (see ecosystem.config.cjs)
+  const cwd = process.cwd();
+  if (existsSync(resolve(cwd, 'scripts/sync-postfix-inbound.mjs'))) return cwd;
   const here = dirname(fileURLToPath(import.meta.url));
-  // apps/api/src/services → repo root
+  // apps/api/dist|src/services → repo root
   return resolve(here, '../../../../');
 }
 
