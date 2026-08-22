@@ -10,11 +10,17 @@ import {
   returnPathHost,
   returnPathTarget,
   MATUMAILER_MAIL_HOST,
+  MATUMAILER_RELAY_IP,
 } from '@matumailer/shared';
 import { domainsRepo, projectsRepo } from '@matumailer/database';
 import { z } from 'zod';
 import { encrypt } from '../lib/crypto.js';
 import { checkDomainDns } from '../lib/domain-dns.js';
+import {
+  domainStatusFromSummary,
+  recordStatusFromCheck,
+  summarizeVerification,
+} from '../lib/domain-verification.js';
 import {
   assertCanCreateDomain,
   isPlanLimitError,
@@ -287,9 +293,11 @@ export async function domainsRoutes(app: FastifyInstance) {
         domain: domain.domain,
         dkimSelector: domain.dkim_selector,
         dkimPublicKey: domain.dkim_public_key,
-        expectedSpfContains: '13.140.160.248',
+        mailHost: MATUMAILER_MAIL_HOST,
+        relayIp: MATUMAILER_RELAY_IP,
         mxHost,
         mxTarget,
+        mxPriority: primaryMx?.priority ?? 10,
         returnPathHost: returnPathHost(domain.return_path_subdomain, domain.domain),
         returnPathTarget: returnPathTarget(domain.region),
       });
@@ -300,45 +308,55 @@ export async function domainsRoutes(app: FastifyInstance) {
         const match = checks.find(
           (c) => c.host.toLowerCase() === record.host.toLowerCase() && c.type === record.type,
         );
-        const found = !!match?.found;
-        await domainsRepo.updateRecordStatus(
-          record.id,
-          found ? 'verified' : 'failed',
-          match?.actual ?? null,
-        );
+        const status = recordStatusFromCheck(match);
+        await domainsRepo.updateRecordStatus(record.id, status, match?.actual ?? null);
         updated.push({
           ...record,
-          status: found ? 'verified' : 'failed',
+          status,
           last_value: match?.actual ?? null,
         });
       }
 
-      const requiredRecords = updated.filter((r) => ['TXT', 'CNAME', 'MX'].includes(r.type));
-      const allRequiredOk = requiredRecords.every((r) => r.status === 'verified');
-
-      const newStatus = allRequiredOk ? 'verified' : 'failed';
-      await domainsRepo.updateDomainStatus(domain.id, newStatus, allRequiredOk);
-      if (allRequiredOk) schedulePostfixInboundSync('domain-verified');
+      const summary = summarizeVerification(checks, updated);
+      const newStatus = domainStatusFromSummary(summary);
+      await domainsRepo.updateDomainStatus(domain.id, newStatus, summary.sendingReady);
+      if (summary.sendingReady) schedulePostfixInboundSync('domain-verified');
 
       const fresh = await domainsRepo.findDomainWithRecords(domain.id);
       const { dkim_private_key_encrypted: _dkimPrivate, ...publicDomain } = fresh!;
       const missing = checks
-        .filter((c) => !c.found)
-        .map((c) => ({ type: c.type, host: c.host, reason: c.reason ?? 'not_found' }));
+        .filter((c) => !c.found || c.status === 'failed')
+        .map((c) => ({
+          type: c.type,
+          host: c.host,
+          purpose: c.purpose,
+          reason: c.reason ?? 'not_found',
+          detected: c.detected,
+        }));
 
-      let message: string;
-      if (autoRefreshed && !allRequiredOk) {
-        message = `Tus DNS apuntaban a hosts que no existen (matumailer.com). Ya regeneramos la lista correcta. Actualiza en tu proveedor: MX del dominio → ${MATUMAILER_MAIL_HOST} (prioridad 10), SPF con ip4:13.140.160.248, y el CNAME de return-path → ${MATUMAILER_MAIL_HOST}. Luego re-verifica.`;
-      } else if (allRequiredOk) {
-        message = 'Dominio verificado. Ya puedes enviar y recibir.';
-      } else {
-        message = `Faltan DNS. El MX debe ser ${MATUMAILER_MAIL_HOST} en el apex del dominio (no mx.tudominio).`;
+      let message = summary.message;
+      if (autoRefreshed && !summary.sendingReady) {
+        message = `Registros regenerados (hosts viejos corregidos). ${summary.message}`;
       }
 
       return {
         domain: publicDomain,
-        verified: allRequiredOk,
+        verified: summary.sendingReady,
+        fullyVerified: summary.fullyVerified,
+        capabilities: summary.capabilities,
+        warnings: summary.warnings,
         missing,
+        checks: checks.map((c) => ({
+          type: c.type,
+          host: c.host,
+          purpose: c.purpose,
+          expected: c.expected,
+          found: c.found,
+          status: c.status,
+          actual: c.actual,
+          detected: c.detected,
+          reason: c.reason,
+        })),
         autoRefreshed,
         message,
       };

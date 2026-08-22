@@ -6,3 +6,4 @@ export * from './deliverability';
 export * from './recipients';
 export * from './system-templates';
 export * from './dkim';
+export * from './dns-normalize';

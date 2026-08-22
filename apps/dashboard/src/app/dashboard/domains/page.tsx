@@ -19,13 +19,17 @@ import {
   type DomainDnsRecord,
   type DomainRecord,
   type DomainRegion,
+  type DomainVerifyResult,
   type DomainWithRecords,
 } from '@/lib/db/domains';
+import { copyBindZoneFile, downloadBindZoneFile } from '@/lib/dns-zone';
 import {
   AlertCircle,
   CheckCircle2,
   CircleDashed,
+  ClipboardCopy,
   Copy,
+  Download,
   Globe,
   Loader2,
   Plus,
@@ -75,6 +79,33 @@ function CopyableValue({ value }: { value: string }) {
         {copied ? '✓ Copiado' : <Copy className="h-3.5 w-3.5" />}
       </span>
     </button>
+  );
+}
+
+function CapBadge({
+  label,
+  state,
+}: {
+  label: string;
+  state?: 'ready' | 'pending' | 'warning' | 'blocked';
+}) {
+  const styles = {
+    ready: 'bg-emerald-100 text-emerald-900',
+    warning: 'bg-amber-100 text-amber-950',
+    pending: 'bg-charcoal/10 text-charcoal/70',
+    blocked: 'bg-red-100 text-red-800',
+  };
+  const icons = {
+    ready: '✓',
+    warning: '⚠',
+    pending: '…',
+    blocked: '✗',
+  };
+  const s = state ?? 'pending';
+  return (
+    <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', styles[s])}>
+      {icons[s]} {label}
+    </span>
   );
 }
 
@@ -165,6 +196,8 @@ function DomainCard({
   const [makingDefault, setMakingDefault] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [capabilities, setCapabilities] = useState<DomainVerifyResult['capabilities']>();
 
   useEffect(() => {
     let cancelled = false;
@@ -184,16 +217,20 @@ function DomainCard({
   async function handleVerify() {
     setError('');
     setInfo('');
+    setWarnings([]);
     setVerifying(true);
     try {
       const result = await verifyDomain(domain.id);
       setDetails(result.domain);
+      setCapabilities(result.capabilities);
+      setWarnings(result.warnings ?? []);
       if (result.verified) {
-        setInfo(result.message ?? 'Dominio verificado.');
+        setInfo(result.message ?? 'Dominio listo para enviar.');
+        if (result.warnings?.length) {
+          setWarnings(result.warnings);
+        }
       } else {
-        setError(
-          result.message ?? 'Faltan registros DNS. Actualiza los registros y vuelve a verificar.',
-        );
+        setError(result.message ?? 'Faltan registros DNS obligatorios (SPF y/o DKIM).');
       }
       onChanged();
     } catch (e) {
@@ -248,6 +285,32 @@ function DomainCard({
     }
   }
 
+  function handleExportZone() {
+    if (!details?.records.length) {
+      setError('No hay registros DNS para exportar. Espera a que carguen o actualiza.');
+      return;
+    }
+    setError('');
+    downloadBindZoneFile(domain.domain, details.records);
+    setInfo(
+      'Descargado .txt para Hostinger. Importa SIN marcar “Reemplazar”. Si el preview sigue en Not Found, añade los 5 registros a mano (más fiable).',
+    );
+  }
+
+  async function handleCopyZone() {
+    if (!details?.records.length) {
+      setError('No hay registros DNS para copiar.');
+      return;
+    }
+    setError('');
+    try {
+      await copyBindZoneFile(domain.domain, details.records);
+      setInfo('Zona BIND copiada al portapapeles.');
+    } catch {
+      setError('No se pudo copiar. Prueba Exportar zona DNS.');
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -263,6 +326,24 @@ function DomainCard({
             </span>
           </CardTitle>
           <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleExportZone}
+              disabled={loadingDetails || !details?.records.length}
+            >
+              <Download className="mr-1 h-4 w-4" />
+              Exportar para Hostinger
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleCopyZone}
+              disabled={loadingDetails || !details?.records.length}
+            >
+              <ClipboardCopy className="mr-1 h-4 w-4" />
+              Copiar zona
+            </Button>
             <Button
               size="sm"
               variant="secondary"
@@ -305,11 +386,28 @@ function DomainCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {error && <p className="rounded-2xl bg-red-50 px-4 py-2 text-sm text-red-800">{error}</p>}
-        {info && <p className="rounded-2xl bg-amber-50 px-4 py-2 text-sm text-amber-950">{info}</p>}
+        {info && <p className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm text-emerald-900">{info}</p>}
+        {warnings.length > 0 && (
+          <div className="rounded-2xl bg-amber-50 px-4 py-2 text-sm text-amber-950">
+            <p className="font-semibold">Advertencias DNS</p>
+            <ul className="mt-1 list-inside list-disc text-xs">
+              {warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {capabilities && (
+          <div className="flex flex-wrap gap-2">
+            <CapBadge label="Envío" state={capabilities.sending} />
+            <CapBadge label="Recepción" state={capabilities.receiving} />
+            <CapBadge label="DMARC" state={capabilities.dmarc} />
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
-          MX correcto: host <strong>{domain.domain}</strong> (o @) →{' '}
-          <code>matumailer.matubyte.com</code> prioridad 10. No uses{' '}
-          <code>mx.us-east-1.matumailer.com</code> (ese host no existe).
+          <strong>Envío</strong> requiere SPF + DKIM. <strong>Recepción</strong> requiere MX →{' '}
+          <code>matumailer.matubyte.com</code>. Si usas Zoho u otro correo, elimina sus MX o
+          MatuMailer no recibirá los mensajes. El CNAME <code>rp-…</code> es return-path (rebotes).
         </p>
         {loadingDetails ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -384,7 +482,7 @@ export default function DomainsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Dominios personalizados"
-        description="Añade tu dominio y configura DNS (SPF, DKIM, DMARC, return-path y MX). El MX es obligatorio: debe apuntar a matumailer.matubyte.com para recibir. Sin DNS verificados no podrás enviar ni recibir."
+        description="Añade tu dominio y configura DNS (SPF, DKIM, DMARC, return-path y MX). Puedes exportar un archivo de zona BIND e importarlo en Cloudflare u otro proveedor. El MX debe apuntar a matumailer.matubyte.com."
       />
 
       {success && (

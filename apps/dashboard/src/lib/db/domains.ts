@@ -36,7 +36,20 @@ export type DomainWithRecords = DomainRecord & { records: DomainDnsRecord[] };
 export type DomainVerifyResult = {
   domain: DomainWithRecords;
   verified: boolean;
-  missing: Array<{ type: 'TXT' | 'CNAME' | 'MX'; host: string; reason: string }>;
+  fullyVerified?: boolean;
+  capabilities?: {
+    sending: 'ready' | 'pending' | 'warning' | 'blocked';
+    receiving: 'ready' | 'pending' | 'warning' | 'blocked';
+    dmarc: 'ready' | 'pending' | 'warning' | 'blocked';
+  };
+  warnings?: string[];
+  missing: Array<{
+    type: 'TXT' | 'CNAME' | 'MX';
+    host: string;
+    purpose?: string;
+    reason: string;
+    detected?: string[];
+  }>;
   message?: string;
   autoRefreshed?: boolean;
 };

@@ -49,12 +49,18 @@ export function ComposePane({
   const [subject, setSubject] = useState(defaultSubject);
   const editorRef = useRef<HTMLDivElement>(null);
 
+  // Inicializa los inputs UNA SOLA VEZ al montar el pane.
+  // Si los re-sincronizamos en cada cambio de `accounts` (que cambia de
+  // referencia cada vez que el padre hace `load()`), el editor se vacía
+  // mientras el usuario está escribiendo porque el padre recarga la bandeja
+  // cada 10 segundos.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setFrom(defaultFrom || accounts[0]?.email || '');
     setTo(defaultTo);
     setSubject(defaultSubject);
     if (editorRef.current) editorRef.current.innerHTML = '';
-  }, [defaultFrom, defaultTo, defaultSubject, accounts]);
+  }, []);
 
   const tool = (label: string, onClick: () => void, Icon: typeof Bold) => (
     <button
