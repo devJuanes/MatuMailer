@@ -54,7 +54,6 @@ export function ComposePane({
   // referencia cada vez que el padre hace `load()`), el editor se vacía
   // mientras el usuario está escribiendo porque el padre recarga la bandeja
   // cada 10 segundos.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setFrom(defaultFrom || accounts[0]?.email || '');
     setTo(defaultTo);
