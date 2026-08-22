@@ -1,4 +1,4 @@
-import { resolveCname, resolveMx, resolveTxt } from 'dns/promises';
+import { Resolver } from 'dns/promises';
 import {
   MATUMAILER_MAIL_HOST,
   MATUMAILER_RELAY_IP,
@@ -7,6 +7,15 @@ import {
   joinTxtRecords,
   type DnsRecordType,
 } from '@matumailer/shared';
+
+/** Resolutor público: el resolver del VPS a veces no ve registros en Cloudflare. */
+const publicDns = new Resolver();
+publicDns.setServers(
+  (process.env.DNS_VERIFY_SERVERS ?? '8.8.8.8,1.1.1.1,8.8.4.4')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
 
 export type DnsCheckStatus = 'verified' | 'failed' | 'warning' | 'missing';
 
@@ -27,7 +36,7 @@ export interface DnsCheckResult {
 
 async function lookupTxt(host: string): Promise<string[]> {
   try {
-    const chunks = await resolveTxt(host);
+    const chunks = await publicDns.resolveTxt(host);
     return chunks.map((parts) => parts.join(''));
   } catch {
     return [];
@@ -36,7 +45,7 @@ async function lookupTxt(host: string): Promise<string[]> {
 
 async function lookupMx(host: string): Promise<Array<{ exchange: string; priority: number }>> {
   try {
-    return await resolveMx(host);
+    return await publicDns.resolveMx(host);
   } catch {
     return [];
   }
@@ -44,7 +53,7 @@ async function lookupMx(host: string): Promise<Array<{ exchange: string; priorit
 
 async function lookupCname(host: string): Promise<string | null> {
   try {
-    const targets = await resolveCname(host);
+    const targets = await publicDns.resolveCname(host);
     return targets[0] ?? null;
   } catch {
     return null;
@@ -143,8 +152,7 @@ export async function checkDomainDns(opts: CheckDomainDnsOpts): Promise<DnsCheck
   const dkimExpected = `v=DKIM1; k=rsa; p=${opts.dkimPublicKey}`;
   const dkimNeedle = normalizeDnsTxt(`p=${opts.dkimPublicKey}`);
   const dkimJoined = joinTxtRecords(dkimTxts);
-  const dkimFound =
-    txtContains(dkimTxts, dkimExpected) || dkimJoined.includes(dkimNeedle);
+  const dkimFound = txtContains(dkimTxts, dkimExpected) || dkimJoined.includes(dkimNeedle);
   let dkimReason: string | undefined;
   if (!dkimFound) {
     if (!dkimTxts.length) {
@@ -182,18 +190,16 @@ export async function checkDomainDns(opts: CheckDomainDnsOpts): Promise<DnsCheck
     status: dmarcFound ? 'verified' : 'warning',
     actual: dmarcTxts[0] ?? null,
     detected: dmarcTxts,
-    reason: dmarcFound ? undefined : 'DMARC no encontrado. Recomendado para entregabilidad; no bloquea el envío.',
+    reason: dmarcFound
+      ? undefined
+      : 'DMARC no encontrado. Recomendado para entregabilidad; no bloquea el envío.',
   });
 
   // --- MX ---
   if (opts.mxHost && opts.mxTarget) {
     const mxRecords = await lookupMx(opts.mxHost);
-    const matumailerMx = mxRecords.filter(
-      (r) => normalizeDnsHostname(r.exchange) === mxTarget,
-    );
-    const otherMx = mxRecords.filter(
-      (r) => normalizeDnsHostname(r.exchange) !== mxTarget,
-    );
+    const matumailerMx = mxRecords.filter((r) => normalizeDnsHostname(r.exchange) === mxTarget);
+    const otherMx = mxRecords.filter((r) => normalizeDnsHostname(r.exchange) !== mxTarget);
     const mxFound = matumailerMx.length > 0;
     const mxFormatted = formatMxList(mxRecords);
     let mxStatus: DnsCheckStatus = mxFound ? 'verified' : 'missing';
@@ -201,7 +207,9 @@ export async function checkDomainDns(opts: CheckDomainDnsOpts): Promise<DnsCheck
 
     if (mxFound && otherMx.length > 0) {
       mxStatus = 'warning';
-      const others = otherMx.map((r) => `${normalizeDnsHostname(r.exchange)} (prio ${r.priority})`).join(', ');
+      const others = otherMx
+        .map((r) => `${normalizeDnsHostname(r.exchange)} (prio ${r.priority})`)
+        .join(', ');
       mxReason = `MatuMailer MX detectado, pero también hay otros: ${others}. Para recibir solo en MatuMailer, elimina los MX de Zoho/otros proveedores.`;
     } else if (!mxFound) {
       mxReason = mxRecords.length

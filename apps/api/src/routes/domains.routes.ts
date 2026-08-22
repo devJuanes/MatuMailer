@@ -29,6 +29,16 @@ import {
 } from '../services/plan.service.js';
 import { schedulePostfixInboundSync } from '../services/postfix-inbound-sync.js';
 
+function dnsRecordHostMatches(checkHost: string, recordHost: string, apexDomain: string): boolean {
+  const c = checkHost.trim().toLowerCase();
+  const r = recordHost.trim().toLowerCase();
+  const apex = apexDomain.trim().toLowerCase();
+  if (c === r) return true;
+  if (r === '@' && c === apex) return true;
+  if (c === '@' && r === apex) return true;
+  return false;
+}
+
 const RETURN_PATH_PREFIX = 'rp';
 
 function randomReturnPathSubdomain(): string {
@@ -350,7 +360,7 @@ export async function domainsRoutes(app: FastifyInstance) {
 
       for (const record of records) {
         const match = checks.find(
-          (c) => c.host.toLowerCase() === record.host.toLowerCase() && c.type === record.type,
+          (c) => dnsRecordHostMatches(c.host, record.host, domain.domain) && c.type === record.type,
         );
         const status = recordStatusFromCheck(match);
         await domainsRepo.updateRecordStatus(record.id, status, match?.actual ?? null);
