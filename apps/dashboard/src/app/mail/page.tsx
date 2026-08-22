@@ -16,6 +16,7 @@ import {
   patchInboundMessage,
   purgeDemoInboundMessages,
 } from '@/lib/mail/inbound-api';
+import { buildReplyHeaders, replySubject } from '@/lib/mail/reply-headers';
 import type {
   AccountId,
   InboxEmail,
@@ -196,6 +197,8 @@ export default function MailInboxPage() {
     subject: string;
     text: string;
     html?: string;
+    headers?: Record<string, string>;
+    stayOnMessage?: boolean;
   }) => {
     if (!activeId) return;
     if (!payload.from) {
@@ -219,17 +222,43 @@ export default function MailInboxPage() {
           subject: payload.subject,
           html,
           text: payload.text,
+          ...(payload.headers ? { headers: payload.headers } : {}),
         }),
       });
       showToast('Correo enviado');
-      setComposing(false);
-      setFolder('sent');
-      await load();
+      if (!payload.stayOnMessage) {
+        setComposing(false);
+        setFolder('sent');
+      }
+      await load({ silent: payload.stayOnMessage });
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'No se pudo enviar');
     } finally {
       setSending(false);
     }
+  };
+
+  const advanceSelection = (currentId: string) => {
+    const idx = visibleEmails.findIndex((e) => e.id === currentId);
+    const next = visibleEmails[idx + 1] ?? visibleEmails[idx - 1];
+    setSelectedId(next?.id ?? null);
+  };
+
+  const moveSelectedTo = (target: MailFolder) => {
+    if (!selected) return;
+    const id = selected.id;
+    updateLocal(id, { folder: target });
+    void persist(id, { folder: target });
+    advanceSelection(id);
+    const labels: Record<MailFolder, string> = {
+      inbox: 'Bandeja de entrada',
+      archive: 'Archivo',
+      spam: 'Spam',
+      trash: 'Papelera',
+      sent: 'Enviados',
+      favorite: 'Favoritos',
+    };
+    showToast(`Movido a ${labels[target]}`);
   };
 
   const inboxCount = emails.filter((e) => e.folder === 'inbox' && e.unread).length;
@@ -325,23 +354,15 @@ export default function MailInboxPage() {
           composerAvatar={userAvatar}
           sending={sending}
           onBack={() => setSelectedId(null)}
-          onArchive={() => {
+          onArchive={() => moveSelectedTo('archive')}
+          onSpam={() => moveSelectedTo('spam')}
+          onTrash={() => moveSelectedTo('trash')}
+          onMoveTo={moveSelectedTo}
+          onMarkUnread={() => {
             if (!selected) return;
-            updateLocal(selected.id, { folder: 'archive' });
-            void persist(selected.id, { folder: 'archive' });
-            showToast('Archivado');
-          }}
-          onSpam={() => {
-            if (!selected) return;
-            updateLocal(selected.id, { folder: 'spam' });
-            void persist(selected.id, { folder: 'spam' });
-            showToast('Marcado como spam');
-          }}
-          onTrash={() => {
-            if (!selected) return;
-            updateLocal(selected.id, { folder: 'trash' });
-            void persist(selected.id, { folder: 'trash' });
-            showToast('Movido a papelera');
+            updateLocal(selected.id, { unread: 1 });
+            void persist(selected.id, { unread: true });
+            showToast('Marcado como no leído');
           }}
           onToggleStar={() => {
             if (!selected) return;
@@ -361,16 +382,17 @@ export default function MailInboxPage() {
               setSelectedId(visibleEmails[selectedIndex + 1].id);
             }
           }}
-          onSend={(text) => {
+          onSend={(text, to) => {
             if (!selected) return;
-            const replyTo = selected.folder === 'sent' ? selected.to : selected.from.email;
+            const replyTo =
+              to.trim() || (selected.folder === 'sent' ? selected.to : selected.from.email);
             void sendMail({
               from: resolveFrom() || selected.account,
               to: replyTo,
-              subject: selected.subject.startsWith('Re:')
-                ? selected.subject
-                : `Re: ${selected.subject}`,
+              subject: replySubject(selected.subject),
               text,
+              headers: buildReplyHeaders(selected),
+              stayOnMessage: true,
             });
           }}
         />

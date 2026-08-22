@@ -38,4 +38,8 @@ export interface InboxEmail {
   account: AccountId;
   section: 'pinned' | 'today' | 'yesterday' | 'earlier';
   quickReplies: string[];
+  /** Message-ID RFC del correo recibido (para hilos). */
+  messageId?: string | null;
+  inReplyTo?: string | null;
+  references?: string[];
 }

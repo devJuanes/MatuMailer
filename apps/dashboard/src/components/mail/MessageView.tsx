@@ -21,8 +21,8 @@ import {
   ArrowUp,
   Mail,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import type { InboxEmail } from '@/lib/mail/types';
+import { useEffect, useRef, useState } from 'react';
+import type { InboxEmail, MailFolder } from '@/lib/mail/types';
 
 interface MessageViewProps {
   email: InboxEmail | null;
@@ -36,9 +36,11 @@ interface MessageViewProps {
   onTrash: () => void;
   onToggleStar: () => void;
   onTogglePin: () => void;
+  onMoveTo?: (folder: MailFolder) => void;
+  onMarkUnread?: () => void;
   onPrev: () => void;
   onNext: () => void;
-  onSend: (text: string) => void;
+  onSend: (text: string, to: string) => void;
 }
 
 export function MessageView({
@@ -53,17 +55,24 @@ export function MessageView({
   onTrash,
   onToggleStar,
   onTogglePin,
+  onMoveTo,
+  onMarkUnread,
   onPrev,
   onNext,
   onSend,
 }: MessageViewProps) {
   const [draft, setDraft] = useState('');
   const [recipient, setRecipient] = useState('');
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!email) return;
     setDraft('');
-    setRecipient(email.from.email);
+    setRecipient(email.folder === 'sent' ? email.to : email.from.email);
+    setMoveOpen(false);
+    setMoreOpen(false);
   }, [email]);
 
   if (!email) {
@@ -105,6 +114,18 @@ export function MessageView({
 
   const bodyHtml = /<[a-z][\s\S]*>/i.test(email.body);
 
+  const focusReply = () => {
+    textareaRef.current?.focus();
+    textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  const moveFolders: { id: MailFolder; label: string }[] = [
+    { id: 'inbox', label: 'Bandeja de entrada' },
+    { id: 'archive', label: 'Archivo' },
+    { id: 'spam', label: 'Spam' },
+    { id: 'trash', label: 'Papelera' },
+  ];
+
   return (
     <section className="animate-fade-in flex h-full min-w-0 flex-1 flex-col bg-[#0c0c0e]">
       <div className="flex items-center justify-between border-b border-zinc-800/60 px-4 py-2">
@@ -115,8 +136,75 @@ export function MessageView({
           {toolBtn('Papelera', onTrash, Trash2)}
           {toolBtn('Favorito', onToggleStar, Star, email.starred)}
           {toolBtn('Pin', onTogglePin, Pin, email.pinned, 'text-zinc-200')}
-          {toolBtn('Mover', () => undefined, FolderInput)}
-          {toolBtn('Más', () => undefined, MoreHorizontal)}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setMoveOpen((v) => !v);
+                setMoreOpen(false);
+              }}
+              aria-label="Mover"
+              className={`rounded-lg p-2 transition-colors hover:bg-zinc-800 ${
+                moveOpen ? 'text-zinc-200' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <FolderInput size={18} />
+            </button>
+            {moveOpen && onMoveTo && (
+              <div className="absolute left-0 top-full z-30 mt-1 min-w-[180px] rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
+                {moveFolders.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className="block w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                    onClick={() => {
+                      onMoveTo(f.id);
+                      setMoveOpen(false);
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setMoreOpen((v) => !v);
+                setMoveOpen(false);
+              }}
+              aria-label="Más"
+              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+            >
+              <MoreHorizontal size={18} />
+            </button>
+            {moreOpen && (
+              <div className="absolute left-0 top-full z-30 mt-1 min-w-[160px] rounded-xl border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
+                <button
+                  type="button"
+                  className="block w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                  onClick={() => {
+                    onMarkUnread?.();
+                    setMoreOpen(false);
+                  }}
+                >
+                  Marcar no leído
+                </button>
+                <button
+                  type="button"
+                  className="block w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                  onClick={() => {
+                    focusReply();
+                    setMoreOpen(false);
+                  }}
+                >
+                  Responder
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1 text-xs text-zinc-500">
           <button
@@ -188,7 +276,9 @@ export function MessageView({
               </button>
               <button
                 type="button"
+                onClick={focusReply}
                 className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                aria-label="Responder"
               >
                 <Reply size={16} />
               </button>
@@ -203,9 +293,21 @@ export function MessageView({
         </div>
 
         {bodyHtml ? (
-          <div
-            className="prose prose-invert max-w-none text-[15px] leading-7 text-zinc-300"
-            dangerouslySetInnerHTML={{ __html: email.body }}
+          <iframe
+            title="Contenido del correo"
+            sandbox="allow-same-origin allow-popups"
+            srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>body{margin:0;font-family:system-ui,sans-serif;font-size:15px;line-height:1.6;color:#d4d4d8;background:transparent;}</style></head><body>${email.body}</body></html>`}
+            className="min-h-[120px] w-full rounded-lg border-0 bg-transparent"
+            style={{ height: 'auto', minHeight: 120 }}
+            onLoad={(e) => {
+              const frame = e.currentTarget;
+              try {
+                const h = frame.contentDocument?.documentElement.scrollHeight;
+                if (h) frame.style.height = `${Math.min(h + 16, 800)}px`;
+              } catch {
+                /* sandbox */
+              }
+            }}
           />
         ) : (
           <div className="prose prose-invert max-w-none">
@@ -239,10 +341,18 @@ export function MessageView({
               />
             </div>
             <textarea
+              ref={textareaRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && draft.trim()) {
+                  e.preventDefault();
+                  onSend(draft.trim(), recipient.trim());
+                  setDraft('');
+                }
+              }}
               rows={3}
-              placeholder="Escribe una respuesta…"
+              placeholder="Escribe una respuesta… (Ctrl+Enter para enviar)"
               className="w-full resize-none bg-transparent px-3 py-2.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600"
             />
             <div className="flex items-center justify-between px-2 pb-2">
@@ -287,7 +397,7 @@ export function MessageView({
                 type="button"
                 disabled={!draft.trim() || sending}
                 onClick={() => {
-                  onSend(draft.trim());
+                  onSend(draft.trim(), recipient.trim());
                   setDraft('');
                 }}
                 className="flex size-9 items-center justify-center rounded-full bg-blue-500 text-white transition-colors hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-40"

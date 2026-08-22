@@ -18,6 +18,8 @@ export interface ApiInboundMessage {
   unread: boolean;
   has_attachment: boolean;
   received_at: string;
+  message_id?: string | null;
+  raw_headers?: Record<string, string> | null;
 }
 
 function avatarFor(email: string) {
@@ -38,6 +40,14 @@ function sectionFor(ts: number): InboxEmail['section'] {
 export function mapInboundToEmail(m: ApiInboundMessage): InboxEmail {
   const ts = new Date(m.received_at).getTime();
   const body = m.html_body || m.text_body || m.preview || '';
+  const hdr = (m.raw_headers ?? {}) as Record<string, string>;
+  const refRaw = hdr.references ?? hdr.References ?? '';
+  const references = refRaw
+    ? String(refRaw)
+        .split(/\s+/)
+        .map((x) => x.trim())
+        .filter(Boolean)
+    : [];
   return {
     id: m.id,
     from: {
@@ -69,6 +79,9 @@ export function mapInboundToEmail(m: ApiInboundMessage): InboxEmail {
     account: m.folder === 'sent' ? m.from_email : m.to_email,
     section: sectionFor(ts),
     quickReplies: [],
+    messageId: m.message_id ?? hdr['message-id'] ?? hdr['Message-ID'] ?? null,
+    inReplyTo: hdr['in-reply-to'] ?? hdr['In-Reply-To'] ?? null,
+    references,
   };
 }
 

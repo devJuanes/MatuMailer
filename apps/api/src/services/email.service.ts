@@ -304,6 +304,11 @@ async function sendEmailToOne(
         folder: 'sent',
         category: 'primary',
         unread: false,
+        raw_headers: {
+          'message-id': finalMessageId,
+          ...(extraHeaders['In-Reply-To'] ? { 'in-reply-to': extraHeaders['In-Reply-To'] } : {}),
+          ...(extraHeaders.References ? { references: extraHeaders.References } : {}),
+        },
       });
     } catch (mirrorErr) {
       console.warn(
